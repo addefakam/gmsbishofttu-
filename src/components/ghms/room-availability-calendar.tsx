@@ -187,11 +187,11 @@ export function RoomAvailabilityCalendar({ roomId, checkIn, checkOut, onChange, 
       >
         <CalendarDays className="h-4 w-4 text-gray-400 shrink-0" />
         <div className="flex items-center gap-1.5 text-xs flex-1 min-w-0">
-          <span className={cn("rounded-full px-2 py-0.5 font-semibold truncate", checkIn ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
+          <span className={cn("rounded-full px-2.5 py-1 font-bold truncate", checkIn ? "bg-blue-100 text-blue-700 border border-blue-300" : "bg-gray-100 text-gray-500")}>
             {fmtShort(checkIn) !== "—" ? fmtShort(checkIn) : t("calendarArrival")}
           </span>
           <span className="text-gray-300">→</span>
-          <span className={cn("rounded-full px-2 py-0.5 font-semibold truncate", checkOut ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
+          <span className={cn("rounded-full px-2.5 py-1 font-bold truncate", checkOut ? "bg-amber-100 text-amber-700 border border-amber-300" : "bg-gray-100 text-gray-500")}>
             {fmtShort(checkOut) !== "—" ? fmtShort(checkOut) : t("calendarDeparture")}
           </span>
         </div>
@@ -209,8 +209,8 @@ export function RoomAvailabilityCalendar({ roomId, checkIn, checkOut, onChange, 
               type="button"
               onClick={() => setPhase("arrival")}
               className={cn(
-                "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors",
-                phase === "arrival" ? "bg-emerald-600 text-white shadow-sm" : "bg-white text-gray-500 border"
+                "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold transition-colors",
+                phase === "arrival" ? "bg-blue-600 text-white shadow-sm" : "bg-white text-gray-500 border"
               )}
             >
               <CalendarDays className="h-3.5 w-3.5" />
@@ -222,8 +222,8 @@ export function RoomAvailabilityCalendar({ roomId, checkIn, checkOut, onChange, 
               onClick={() => checkIn && setPhase("departure")}
               disabled={!checkIn}
               className={cn(
-                "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-40",
-                phase === "departure" ? "bg-emerald-600 text-white shadow-sm" : "bg-white text-gray-500 border"
+                "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold transition-colors disabled:opacity-40",
+                phase === "departure" ? "bg-amber-600 text-white shadow-sm" : "bg-white text-gray-500 border"
               )}
             >
               <CalendarDays className="h-3.5 w-3.5" />

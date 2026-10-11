@@ -2644,10 +2644,6 @@ export default function ReservationsPage() {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="res-notes">{t("labelNotes")}</Label>
-                <Textarea id="res-notes" placeholder={t("placeholderNotes")} rows={2} value={createForm.notes} onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })} />
-              </div>
             </div>
           </div>
 
