@@ -2223,7 +2223,11 @@ export default function ReservationsPage() {
 
       {/* New Reservation Dialog — single page form */}
       <Dialog open={createOpen} onOpenChange={closeCreateDialog}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent
+          className="sm:max-w-2xl"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "672px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarPlus className="h-5 w-5 text-emerald-500" />
@@ -2685,7 +2689,11 @@ export default function ReservationsPage() {
 
       {/* ── Extend Stay Dialog ── */}
       <Dialog open={!!extendDialog} onOpenChange={(o) => { if (!o) { setExtendDialog(null); setExtendDate(""); } }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "448px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarPlus className="h-5 w-5 text-sky-600" />
