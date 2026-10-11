@@ -1531,7 +1531,10 @@ export default function GroupBookingsPage() {
         if (!open) resetCreateForm();
         setCreateOpen(open);
       }}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent
+          className="sm:max-w-[520px]"
+          style={{ left: "1rem", right: "auto", transform: "translateY(-50%)", width: "auto", maxWidth: "520px" }}
+        >
           <DialogHeader>
             <DialogTitle>{t("dlgCreateTitle")}</DialogTitle>
             <DialogDescription>
