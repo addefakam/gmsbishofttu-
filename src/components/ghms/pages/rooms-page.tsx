@@ -1218,7 +1218,11 @@ export default function RoomsPage() {
 
       {/* Create/Edit Dialog — no Room Name field */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent
+          className="sm:max-w-lg"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "512px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           <DialogHeader>
             <DialogTitle>{editingRoom ? t("dialogEditRoomTitle") : t("dialogAddRoomTitle")}</DialogTitle>
             <DialogDescription>
@@ -1508,7 +1512,11 @@ export default function RoomsPage() {
 
       {/* Room Handover Detail Dialog */}
       <Dialog open={!!infoRoom} onOpenChange={(open) => { if (!open) { setInfoRoom(null); setRoomReservations([]); } }}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          className="sm:max-w-lg max-h-[90vh] overflow-y-auto"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "512px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           {infoRoom && (() => {
             const amenities = parseAmenities(infoRoom.amenities);
             const activeRes = roomReservations.find((r) => r.status === "ACTIVE" || r.status === "CHECKED_IN");
@@ -2027,7 +2035,11 @@ export default function RoomsPage() {
 
       {/* ── Extend Stay Dialog ── */}
       <Dialog open={!!extendDialog} onOpenChange={(open) => { if (!open) { setExtendDialog(null); setExtendDate(""); } }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "448px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarClock className="h-5 w-5 text-amber-600" /> {t("dialogExtendTitle")}
@@ -2108,7 +2120,11 @@ export default function RoomsPage() {
 
       {/* ── Room Shift Dialog ── */}
       <Dialog open={!!shiftDialog} onOpenChange={(open) => { if (!open) { setShiftDialog(null); setShiftTargetRoomId(""); } }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "448px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ArrowRightLeft className="h-5 w-5 text-violet-600" /> {t("dialogShiftTitle")}

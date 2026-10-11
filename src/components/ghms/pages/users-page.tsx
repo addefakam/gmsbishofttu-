@@ -603,39 +603,49 @@ export default function UsersPage() {
       </Dialog>
 
       {/* ── Delete Confirmation Dialog ── */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+      <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+        <DialogContent
+          className="sm:max-w-[400px]"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "400px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
               <Trash2 className="h-5 w-5" />
               {t("deleteTitle")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
+            </DialogTitle>
+            <DialogDescription>
               {t("deleteDesc", { name: deleteTarget?.name, username: deleteTarget?.username })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2 sm:gap-0">
-            <AlertDialogCancel disabled={deleting}>{t("btnCancel")}</AlertDialogCancel>
-            <AlertDialogAction
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+            >
+              {t("btnCancel")}
+            </Button>
+            <Button
+              variant="destructive"
               onClick={handleDelete}
               disabled={deleting}
-              className="bg-destructive text-white hover:bg-destructive/90 gap-2"
             >
               {deleting ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
                   {t("deleteDeleting")}
                 </>
               ) : (
                 <>
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4 mr-1" />
                   {t("deleteBtnDelete")}
                 </>
               )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
