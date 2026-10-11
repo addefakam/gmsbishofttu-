@@ -226,7 +226,7 @@ function HomeContent() {
             )}
           </button>
         </header>
-        <main className="flex-1 overflow-y-auto pl-4 md:pl-6">
+        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
           <PageRenderer />
         </main>
       </div>
