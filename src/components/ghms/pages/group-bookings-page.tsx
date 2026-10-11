@@ -1681,7 +1681,10 @@ export default function GroupBookingsPage() {
           setAddReservationOpen(open);
         }}
       >
-        <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "520px" }}
+        >
           <DialogHeader>
             <DialogTitle>{t("dlgAddGuestTitle")}</DialogTitle>
             <DialogDescription>
