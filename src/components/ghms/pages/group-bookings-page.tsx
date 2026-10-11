@@ -1534,6 +1534,7 @@ export default function GroupBookingsPage() {
         <DialogContent
           className="sm:max-w-[520px]"
           style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "520px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
         >
           <DialogHeader>
             <DialogTitle>{t("dlgCreateTitle")}</DialogTitle>
@@ -1684,6 +1685,7 @@ export default function GroupBookingsPage() {
         <DialogContent
           className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto"
           style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "520px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
         >
           <DialogHeader>
             <DialogTitle>{t("dlgAddGuestTitle")}</DialogTitle>
@@ -2013,6 +2015,7 @@ export default function GroupBookingsPage() {
         <DialogContent
           className="sm:max-w-[400px]"
           style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "400px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
         >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

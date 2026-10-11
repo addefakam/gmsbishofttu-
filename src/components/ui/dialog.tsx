@@ -32,6 +32,7 @@ function DialogClose({
 
 function DialogOverlay({
   className,
+  style: styleProp,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
   return (
@@ -47,6 +48,7 @@ function DialogOverlay({
         backgroundColor: "rgba(0, 0, 0, 0.6)",
         backdropFilter: "blur(2px)",
         WebkitBackdropFilter: "blur(2px)",
+        ...styleProp,
       }}
       className={className}
       {...props}
@@ -59,13 +61,15 @@ function DialogContent({
   children,
   showCloseButton = true,
   style: styleProp,
+  overlayStyle,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  overlayStyle?: React.CSSProperties
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay />
+      <DialogOverlay style={overlayStyle} />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         style={{
