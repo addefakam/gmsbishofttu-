@@ -79,6 +79,7 @@ function DialogContent({
           border: "1px solid #e5e7eb",
           borderRadius: "0.75rem",
           boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+          ...props.style,
         }}
         className={cn("max-h-[90vh] overflow-y-auto p-6", className)}
         {...props}

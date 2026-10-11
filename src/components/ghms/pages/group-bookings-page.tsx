@@ -2004,7 +2004,10 @@ export default function GroupBookingsPage() {
         open={!!deleteTarget}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
       >
-        <DialogContent className="sm:max-w-[400px] !left-auto !right-4 !translate-x-0 !top-1/2 !-translate-y-1/2">
+        <DialogContent
+          className="sm:max-w-[400px]"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)" } as React.CSSProperties}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Trash2 className="h-4 w-4 text-destructive" />
