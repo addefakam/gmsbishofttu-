@@ -2006,7 +2006,7 @@ export default function GroupBookingsPage() {
       >
         <DialogContent
           className="sm:max-w-[400px]"
-          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "400px" } as React.CSSProperties}
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "400px" }}
         >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
