@@ -1533,7 +1533,7 @@ export default function GroupBookingsPage() {
       }}>
         <DialogContent
           className="sm:max-w-[520px]"
-          style={{ left: "1rem", right: "auto", transform: "translateY(-50%)", width: "auto", maxWidth: "520px" }}
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "520px" }}
         >
           <DialogHeader>
             <DialogTitle>{t("dlgCreateTitle")}</DialogTitle>
