@@ -2053,7 +2053,11 @@ export default function GroupBookingsPage() {
         open={!!checkoutTarget}
         onOpenChange={(open) => { if (!open) setCheckoutTarget(null); }}
       >
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent
+          className="sm:max-w-[400px]"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "400px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <LogOut className="h-5 w-5 text-orange-500" />
@@ -2095,7 +2099,11 @@ export default function GroupBookingsPage() {
         if (!open) { setPaymentGroupId(null); setPaymentForm({ amount: "", method: "CASH", referenceNo: "", notes: "" }); }
         setPaymentOpen(open);
       }}>
-        <DialogContent className="sm:max-w-[460px]">
+        <DialogContent
+          className="sm:max-w-[460px]"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "460px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CreditCard className="h-5 w-5 text-blue-500" />
@@ -2179,7 +2187,11 @@ export default function GroupBookingsPage() {
 
       {/* Reservation Detail Dialog */}
       <Dialog open={!!detailRes} onOpenChange={(open) => { if (!open) setDetailRes(null); }}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent
+          className="sm:max-w-[500px]"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "500px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Eye className="h-5 w-5" />
@@ -2310,7 +2322,11 @@ export default function GroupBookingsPage() {
 
       {/* ── Change Dates Dialog (per-reservation) ── */}
       <Dialog open={!!extendTarget} onOpenChange={(open) => { if (!open) setExtendTarget(null); }}>
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent
+          className="sm:max-w-[400px]"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "400px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarClock className="h-4 w-4" />
@@ -2344,7 +2360,11 @@ export default function GroupBookingsPage() {
 
       {/* ── Shift Room Dialog (per-reservation) ── */}
       <Dialog open={!!shiftTarget} onOpenChange={(open) => { if (!open) setShiftTarget(null); }}>
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent
+          className="sm:max-w-[400px]"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "400px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ArrowRightLeft className="h-4 w-4" />
@@ -2383,7 +2403,11 @@ export default function GroupBookingsPage() {
 
       {/* ── Early Checkout Confirmation ── */}
       <Dialog open={!!earlyCheckoutTarget} onOpenChange={(open) => { if (!open) setEarlyCheckoutTarget(null); }}>
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent
+          className="sm:max-w-[400px]"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "400px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <LogOut className="h-4 w-4 text-amber-600" />
@@ -2410,7 +2434,11 @@ export default function GroupBookingsPage() {
 
       {/* ── Edit Group Dates Dialog ── */}
       <Dialog open={!!editDatesTarget} onOpenChange={(open) => { if (!open) setEditDatesTarget(null); }}>
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent
+          className="sm:max-w-[400px]"
+          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "400px" }}
+          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit className="h-4 w-4" />
