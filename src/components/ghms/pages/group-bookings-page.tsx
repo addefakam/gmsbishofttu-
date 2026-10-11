@@ -1999,12 +1999,12 @@ export default function GroupBookingsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation Dialog — right-aligned, half-screen width */}
       <Dialog
         open={!!deleteTarget}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
       >
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent className="sm:max-w-[400px]" style={{ right: '1rem', left: 'auto', transform: 'none', top: '50%', translateY: '-50%' } as React.CSSProperties}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Trash2 className="h-4 w-4 text-destructive" />
