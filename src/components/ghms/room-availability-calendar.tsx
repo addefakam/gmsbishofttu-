@@ -178,7 +178,7 @@ export function RoomAvailabilityCalendar({ roomId, checkIn, checkOut, onChange, 
     : checkOut ? sdate(checkOut) : undefined;
 
   return (
-    <div className={cn("rounded-lg border bg-white", className)}>
+    <div className={cn("rounded-lg border-2 border-indigo-300 bg-white shadow-sm", className)}>
       {/* Compact header — always visible, click to expand/collapse */}
       <button
         type="button"
