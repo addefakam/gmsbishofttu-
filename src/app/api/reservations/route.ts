@@ -113,7 +113,7 @@ export async function GET(req: NextRequest) {
 
     const [reservations, totalResult] = await Promise.all([
       db.$queryRawUnsafe(
-        `SELECT r.*, g."name" AS "guestName", g."phone" AS "guestPhone",
+        `SELECT r.*, g."name" AS "guestName", g."phone" AS "guestPhone", g."idNumber" AS "guestIdNumber",
                 rm."number" AS "roomNumber", rm."name" AS "roomName",
                 rm."type"::text AS "roomType", rm."id" AS "roomId"
          FROM "Reservation" r
@@ -159,7 +159,7 @@ export async function GET(req: NextRequest) {
       secondGuestIdNumber: r.secondGuestIdNumber ? String(r.secondGuestIdNumber) : "",
       exceptionallyReserved: Boolean(r.exceptionallyReserved),
       exceptionReason: r.exceptionReason ? String(r.exceptionReason) : "",
-      guest: r.guestName ? { id: String(r.guestId), name: String(r.guestName), phone: String(r.guestPhone || "") } : null,
+      guest: r.guestName ? { id: String(r.guestId), name: String(r.guestName), phone: String(r.guestPhone || ""), idNumber: String(r.guestIdNumber || "") } : null,
       room: r.roomId ? { id: String(r.roomId), number: String(r.roomNumber || ""), name: String(r.roomName || ""), type: String(r.roomType || "") } : null,
     }));
 

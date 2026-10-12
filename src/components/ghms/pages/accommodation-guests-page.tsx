@@ -909,7 +909,8 @@ export default function AccommodationGuestsPage() {
             <div className="divide-y md:hidden">
               {paginated.map((r) => {
                 const guest = r.guestId ? guestMap.get(r.guestId) : undefined;
-                const guestIdNumber = guest?.idNumber || "";
+                const guestIdNumber = r.guest?.idNumber || guest?.idNumber || "";
+                const guestPhone = r.guest?.phone || guest?.phone || "";
                 const vip = guest?.vip || false;
                 return (
                 <div key={r.id} className={`p-3 space-y-2 transition-all ${selectionMode && selectedIds.has(r.id) ? "ring-2 ring-violet-400 border-l-4 border-violet-300" : ""}`}>
@@ -930,7 +931,7 @@ export default function AccommodationGuestsPage() {
                           <p className="truncate text-sm font-medium">{r.guest?.name || "—"}</p>
                           {vip && <span className="text-[9px] text-amber-600 font-semibold">VIP</span>}
                         </div>
-                        <p className="text-[10px] text-muted-foreground">{r.guest?.phone || ""}{guestIdNumber ? ` | ${guestIdNumber}` : ""}</p>
+                        <p className="text-[10px] text-muted-foreground">{guestPhone}{guestIdNumber ? ` | ${guestIdNumber}` : ""}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -1029,7 +1030,10 @@ export default function AccommodationGuestsPage() {
                 <TableBody>
                   {paginated.map((r) => {
                     const guest = r.guestId ? guestMap.get(r.guestId) : undefined;
-                    const guestIdNumber = guest?.idNumber || "";
+                    // Prefer idNumber from the reservation's nested guest object
+                    // (returned by the API), fall back to guestMap lookup.
+                    const guestIdNumber = r.guest?.idNumber || guest?.idNumber || "";
+                    const guestPhone = r.guest?.phone || guest?.phone || "";
                     const vip = guest?.vip || false;
                     // Compute nights for context under the stay period
                     const nights = (r.checkIn && r.checkOut)
@@ -1079,9 +1083,9 @@ export default function AccommodationGuestsPage() {
                       {/* Phone / ID — optional column */}
                       {showPhoneId && (
                       <TableCell className="px-4 py-3 align-middle">
-                        {r.guest?.phone || guestIdNumber ? (
+                        {guestPhone || guestIdNumber ? (
                           <div className="space-y-0.5">
-                            {r.guest?.phone && <p className="text-xs font-medium text-slate-700 tabular-nums">{r.guest.phone}</p>}
+                            {guestPhone && <p className="text-xs font-medium text-slate-700 tabular-nums">{guestPhone}</p>}
                             {guestIdNumber && <p className="text-[10px] text-slate-500 font-mono tracking-tight">{guestIdNumber}</p>}
                           </div>
                         ) : (
