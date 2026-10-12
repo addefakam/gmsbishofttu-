@@ -43,7 +43,7 @@ import {
 import {
   Search, LogIn, LogOut, Users, BedDouble, CalendarDays, AlertTriangle, UserPlus, Download,
   MoreVertical, Pencil, XCircle, CalendarPlus, CreditCard,
-  ListChecks, Loader2,
+  ListChecks, Loader2, Phone,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { usePagination } from "@/hooks/use-pagination";
@@ -633,7 +633,6 @@ export default function AccommodationGuestsPage() {
     if (typeof window === "undefined") return;
     try {
       const stored = localStorage.getItem("ghms.showSecondGuestColumn");
-      // Only flip OFF if explicitly "false" — undefined/null keeps default ON
       if (stored === "false") setShowSecondGuest(false);
     } catch {
       /* private mode — ignore */
@@ -647,6 +646,26 @@ export default function AccommodationGuestsPage() {
       /* private mode — ignore */
     }
   }, [showSecondGuest]);
+
+  // Phone/ID column toggle — same pattern as Second Guest.
+  const [showPhoneId, setShowPhoneId] = useState(true);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = localStorage.getItem("ghms.showPhoneIdColumn");
+      if (stored === "false") setShowPhoneId(false);
+    } catch {
+      /* private mode — ignore */
+    }
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem("ghms.showPhoneIdColumn", String(showPhoneId));
+    } catch {
+      /* private mode — ignore */
+    }
+  }, [showPhoneId]);
 
   // Eligibility counts for the confirm dialog's "X not eligible" hint.
   // Mirrors the server-side checks so the user gets an accurate pre-flight
@@ -844,6 +863,21 @@ export default function AccommodationGuestsPage() {
           {selectionMode ? <XCircle className="h-4 w-4" /> : <ListChecks className="h-4 w-4" />}
           {selectionMode ? t("btnBulkExit") : t("btnBulkSelect")}
         </Button>
+        {/* Phone/ID column toggle — desktop only */}
+        <Button
+          type="button"
+          variant={showPhoneId ? "default" : "outline"}
+          size="sm"
+          onClick={() => setShowPhoneId((v) => !v)}
+          className="hidden md:inline-flex h-9 gap-1.5"
+          aria-pressed={showPhoneId}
+          title={showPhoneId
+            ? "Hide the Phone / ID column"
+            : "Show the Phone / ID column"}
+        >
+          <Phone className="h-4 w-4" />
+          {t("btnTogglePhoneId", "Phone / ID")}
+        </Button>
         {/* Second Guest column toggle — desktop only (mobile cards already
             conditionally render second-guest info only when present). */}
         <Button
@@ -981,7 +1015,9 @@ export default function AccommodationGuestsPage() {
                       </TableHead>
                     )}
                     <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{t("thGuest", "Guest")}</TableHead>
+                    {showPhoneId && (
                     <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{t("thPhoneId", "Phone / ID")}</TableHead>
+                    )}
                     <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 w-[180px]">Room / Status</TableHead>
                     {showSecondGuest && (
                       <TableHead className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{t("thSecondGuest", "Second Guest")}</TableHead>
@@ -1040,7 +1076,8 @@ export default function AccommodationGuestsPage() {
                           </div>
                         </div>
                       </TableCell>
-                      {/* Phone / ID */}
+                      {/* Phone / ID — optional column */}
+                      {showPhoneId && (
                       <TableCell className="px-4 py-3 align-middle">
                         {r.guest?.phone || guestIdNumber ? (
                           <div className="space-y-0.5">
@@ -1051,6 +1088,7 @@ export default function AccommodationGuestsPage() {
                           <span className="text-[10px] text-slate-300">—</span>
                         )}
                       </TableCell>
+                      )}
                       {/* Room / Status */}
                       <TableCell className="px-4 py-3 align-middle">
                         <div className="flex flex-col gap-1.5">
