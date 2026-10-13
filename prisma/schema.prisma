@@ -620,7 +620,7 @@ model GroupBooking {
   startDate    String
   endDate      String
   notes        String             @default("")
-  status       GroupBookingStatus @default(CONFIRMED)
+  status       GroupBookingStatus @default(PENDING)
   totalRooms   Int                @default(0)
   totalGuests  Int                @default(0)
   totalCost    Float              @default(0)

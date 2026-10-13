@@ -554,7 +554,7 @@ CREATE TABLE IF NOT EXISTS "GroupBooking" (
   "startDate" TEXT NOT NULL,
   "endDate" TEXT NOT NULL,
   "notes" TEXT NOT NULL DEFAULT '',
-  "status" "GroupBookingStatus" NOT NULL DEFAULT 'CONFIRMED',
+  "status" "GroupBookingStatus" NOT NULL DEFAULT 'PENDING',
   "totalRooms" INTEGER NOT NULL DEFAULT 0,
   "totalGuests" INTEGER NOT NULL DEFAULT 0,
   "totalCost" DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -668,8 +668,6 @@ DO $$ BEGIN ALTER TYPE "RoomType" ADD VALUE IF NOT EXISTS 'PRESIDENTIAL_SUITE'; 
 DO $$ BEGIN ALTER TABLE "Room" ADD COLUMN "pricePerNightWeekend" DOUBLE PRECISION; EXCEPTION WHEN duplicate_column THEN null; END $$;
 DO $$ BEGIN ALTER TABLE "GroupBooking" ADD COLUMN "discountType" TEXT NOT NULL DEFAULT 'AMOUNT'; EXCEPTION WHEN duplicate_column THEN null; END $$;
 DO $$ BEGIN ALTER TABLE "GroupBooking" ADD COLUMN "discountAmount" DOUBLE PRECISION NOT NULL DEFAULT 0; EXCEPTION WHEN duplicate_column THEN null; END $$;
--- New group bookings default to CONFIRMED (PENDING state removed from the UI workflow).
-DO $$ BEGIN ALTER TABLE "GroupBooking" ALTER COLUMN "status" SET DEFAULT 'CONFIRMED'; EXCEPTION WHEN OTHERS THEN null; END $$;
 DO $$ BEGIN ALTER TABLE "Expense" ADD COLUMN "stockMovementId" TEXT; EXCEPTION WHEN duplicate_column THEN null; END $$;
 CREATE INDEX IF NOT EXISTS "Expense_stockMovementId_idx" ON "Expense" ("stockMovementId");
 DO $$ BEGIN ALTER TABLE "Provider" ADD COLUMN "bedCount" INTEGER; EXCEPTION WHEN duplicate_column THEN null; END $$;
