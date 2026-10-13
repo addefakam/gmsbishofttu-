@@ -14,9 +14,7 @@ import {
   apiCreateReservation,
   apiCreateGuest,
   apiUpdateReservation,
-  apiCancelReservation,
   apiCheckin,
-  apiCheckout,
   apiGroupCheckout,
   apiGroupPayment,
 } from "@/lib/api";
@@ -88,9 +86,6 @@ import {
   Check,
   BedDouble,
   AlertCircle,
-  CalendarClock,
-  ArrowRightLeft,
-  XCircle,
   CalendarPlus,
   Edit,
 } from "lucide-react";
@@ -235,7 +230,11 @@ const RESERVATION_STATUS_BADGE: Record<string, string> = {
   CANCELLED: "bg-rose-100 text-rose-800 border-rose-200",
 };
 
-const GROUP_STATUSES = ["PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"] as const;
+// PENDING is intentionally NOT in the dropdown — new groups default to
+// CONFIRMED on creation. The badge/color/label maps still contain PENDING
+// so any legacy groups in PENDING state render correctly until an operator
+// moves them forward to CONFIRMED.
+const GROUP_STATUSES = ["CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"] as const;
 
 export default function GroupBookingsPage() {
   const { t } = useTranslation("groupBookings");
@@ -318,25 +317,11 @@ export default function GroupBookingsPage() {
   const [newGuestIdType, setNewGuestIdType] = useState("");
   const [registeringGuest, setRegisteringGuest] = useState(false);
 
-  // Unlink reservation
-  const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
-
-  // Per-reservation actions (same as individual reservations page):
-  // - Change Dates (extend stay)
-  // - Shift Room (move to different room)
-  // - Early Checkout
-  // - Cancel reservation
-  // - Check-in
-  const [extendTarget, setExtendTarget] = useState<Reservation | null>(null);
-  const [extendForm, setExtendForm] = useState({ checkIn: "", checkOut: "" });
-  const [shiftTarget, setShiftTarget] = useState<Reservation | null>(null);
-  const [shiftRoomId, setShiftRoomId] = useState("");
-  const [earlyCheckoutTarget, setEarlyCheckoutTarget] = useState<Reservation | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-
   // Edit group dates dialog
   const [editDatesTarget, setEditDatesTarget] = useState<GroupBooking | null>(null);
   const [editDatesForm, setEditDatesForm] = useState({ startDate: "", endDate: "" });
+  // Used by both group-level dates edit and any remaining action buttons.
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Auto-assign
   const [autoAssigning, setAutoAssigning] = useState<string | null>(null);
@@ -631,123 +616,6 @@ export default function GroupBookingsPage() {
       toast.error(err instanceof Error ? err.message : t("toastFailedAddReservation"));
     } finally {
       setAddingReservation(false);
-    }
-  };
-
-  const handleUnlinkReservation = async (reservationId: string) => {
-    try {
-      setUnlinkingId(reservationId);
-      await apiUpdateReservation(reservationId, { groupBookingId: null });
-      toast.success(t("toastReservationRemoved"));
-      fetchGroupBookings();
-    } catch {
-      toast.error(t("toastFailedRemoveReservation"));
-    } finally {
-      setUnlinkingId(null);
-    }
-  };
-
-  // ── Per-reservation actions (same features as individual reservations) ──
-
-  const handleResCheckin = async (resId: string) => {
-    try {
-      setActionLoading(resId);
-      await apiCheckin(resId);
-      toast.success(t("toastCheckedIn", { defaultValue: "Guest checked in" }));
-      // Auto-transition: if group is PENDING or CONFIRMED, set to IN_PROGRESS
-      const group = groupBookings.find((g) => g.reservations?.some((r) => r.id === resId));
-      if (group && (group.status === "PENDING" || group.status === "CONFIRMED")) {
-        try { await apiUpdateGroupBooking(group.id, { status: "IN_PROGRESS" }); } catch { /* non-blocking */ }
-      }
-      fetchGroupBookings();
-      fetchRooms();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : t("toastFailedCheckin", { defaultValue: "Failed to check in" }));
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleResCancel = async (resId: string) => {
-    if (!confirm(t("confirmCancelReservation", { defaultValue: "Cancel this reservation? This cannot be undone." }))) return;
-    try {
-      setActionLoading(resId);
-      await apiCancelReservation(resId);
-      toast.success(t("toastReservationCancelled", { defaultValue: "Reservation cancelled" }));
-      fetchGroupBookings();
-      fetchRooms();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : t("toastFailedCancel", { defaultValue: "Failed to cancel" }));
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleExtendSave = async () => {
-    if (!extendTarget) return;
-    if (!extendForm.checkIn || !extendForm.checkOut) {
-      toast.error(t("toastDatesRequired"));
-      return;
-    }
-    try {
-      setActionLoading(extendTarget.id);
-      await apiUpdateReservation(extendTarget.id, {
-        checkIn: extendForm.checkIn,
-        checkOut: extendForm.checkOut,
-      });
-      toast.success(t("toastDatesUpdated", { defaultValue: "Dates updated" }));
-      setExtendTarget(null);
-      fetchGroupBookings();
-      fetchRooms();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : t("toastFailedUpdate", { defaultValue: "Failed to update" }));
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleShiftRoom = async () => {
-    if (!shiftTarget || !shiftRoomId) {
-      toast.error(t("toastSelectRoom", { defaultValue: "Please select a room" }));
-      return;
-    }
-    try {
-      setActionLoading(shiftTarget.id);
-      await apiUpdateReservation(shiftTarget.id, { roomId: shiftRoomId });
-      toast.success(t("toastRoomShifted", { defaultValue: "Room changed successfully" }));
-      setShiftTarget(null);
-      setShiftRoomId("");
-      fetchGroupBookings();
-      fetchRooms();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : t("toastFailedShift", { defaultValue: "Failed to change room" }));
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleEarlyCheckout = async () => {
-    if (!earlyCheckoutTarget) return;
-    try {
-      setActionLoading(earlyCheckoutTarget.id);
-      await apiCheckout(earlyCheckoutTarget.id);
-      toast.success(t("toastCheckedOut", { defaultValue: "Guest checked out" }));
-      // Auto-transition: if all reservations in the group are COMPLETED/CANCELLED,
-      // set the group status to COMPLETED
-      const group = groupBookings.find((g) => g.reservations?.some((r) => r.id === earlyCheckoutTarget.id));
-      if (group && group.status === "IN_PROGRESS") {
-        const allDone = group.reservations?.every((r) => r.status === "COMPLETED" || r.status === "CANCELLED" || r.id === earlyCheckoutTarget.id);
-        if (allDone) {
-          try { await apiUpdateGroupBooking(group.id, { status: "COMPLETED" }); } catch { /* non-blocking */ }
-        }
-      }
-      setEarlyCheckoutTarget(null);
-      fetchGroupBookings();
-      fetchRooms();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : t("toastFailedCheckout", { defaultValue: "Failed to check out" }));
-    } finally {
-      setActionLoading(null);
     }
   };
 
@@ -1076,23 +944,23 @@ export default function GroupBookingsPage() {
             const completedCount = group.reservations?.filter((r) => r.status === "COMPLETED").length ?? 0;
 
             // ── Business rules based on group status ──
-            // PENDING     → can add guests, auto-assign, edit dates, change room/dates per guest.
-            //               Can also check in individual guests (auto-transitions to IN_PROGRESS).
-            // CONFIRMED   → can check in (all + individual), pay, edit dates. Cannot add guests.
-            // IN_PROGRESS → can check out, pay, per-reservation actions. Cannot add guests or check in new guests.
+            // PENDING is treated as CONFIRMED for action gating — new groups
+            // now default to CONFIRMED on creation, but any legacy PENDING
+            // records should still be operable until an operator advances them.
+            // CONFIRMED   → can add guests, auto-assign, check in (all + individual), pay, edit dates.
+            // IN_PROGRESS → can check out (all), pay. Cannot add guests or check in new guests.
             // COMPLETED   → read-only (no actions).
             // CANCELLED   → read-only (only delete allowed).
             const gs = group.status;
-            const canAddGuests = gs === "PENDING";
-            const canAutoAssign = gs === "PENDING";
-            const canEditDates = gs === "PENDING" || gs === "CONFIRMED";
-            const canCheckinAll = (gs === "PENDING" || gs === "CONFIRMED") && upcomingCount > 0;
+            const isConfirmedLike = gs === "CONFIRMED" || gs === "PENDING";
+            const canAddGuests = isConfirmedLike;
+            const canAutoAssign = isConfirmedLike;
+            const canEditDates = isConfirmedLike;
+            const canCheckinAll = isConfirmedLike && upcomingCount > 0;
             const canCheckoutAll = gs === "IN_PROGRESS" && activeCount > 0;
-            const canPay = gs === "PENDING" || gs === "CONFIRMED" || gs === "IN_PROGRESS";
-            const canDelete = gs === "PENDING" || gs === "CANCELLED";
+            const canPay = isConfirmedLike || gs === "IN_PROGRESS";
+            const canDelete = isConfirmedLike || gs === "CANCELLED";
             const isReadOnly = gs === "COMPLETED" || gs === "CANCELLED";
-            // Per-reservation actions: available in PENDING, CONFIRMED, IN_PROGRESS
-            const canPerResAction = !isReadOnly;
 
             return (
               <Card key={group.id} className="overflow-hidden">
@@ -1133,7 +1001,7 @@ export default function GroupBookingsPage() {
                           {t("btnCheckinAll")} ({upcomingCount})
                         </Button>
                       )}
-                      {/* Group check-in also auto-transitions PENDING/CONFIRMED → IN_PROGRESS */}
+                      {/* Group check-in also auto-transitions CONFIRMED → IN_PROGRESS */}
                       {canCheckoutAll && (
                         <Button
                           variant="outline"
@@ -1299,7 +1167,6 @@ export default function GroupBookingsPage() {
                               <TableHead>{t("thcost")}</TableHead>
                               <TableHead>{t("thcheckin")}</TableHead>
                               <TableHead>{t("thstatus")}</TableHead>
-                              <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -1351,98 +1218,6 @@ export default function GroupBookingsPage() {
                                   >
                                     {RES_STATUS_LABELS[res.status] || res.status}
                                   </Badge>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center gap-1">
-                                    {/* Check-in — for UPCOMING + group must be PENDING, CONFIRMED, or IN_PROGRESS */}
-                                    {res.status === "UPCOMING" && canPerResAction && (gs === "PENDING" || gs === "CONFIRMED" || gs === "IN_PROGRESS") && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 text-emerald-600 hover:bg-emerald-50"
-                                        disabled={actionLoading === res.id}
-                                        onClick={(e) => { e.stopPropagation(); handleResCheckin(res.id); }}
-                                        title={t("btnCheckIn", { defaultValue: "Check In" })}
-                                      >
-                                        {actionLoading === res.id ? (
-                                          <span className="h-3 w-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                        ) : (
-                                          <LogIn className="h-3.5 w-3.5" />
-                                        )}
-                                      </Button>
-                                    )}
-                                    {/* Check-out — only for ACTIVE + group must be IN_PROGRESS */}
-                                    {res.status === "ACTIVE" && canPerResAction && gs === "IN_PROGRESS" && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 text-amber-600 hover:bg-amber-50"
-                                        disabled={actionLoading === res.id}
-                                        onClick={(e) => { e.stopPropagation(); setEarlyCheckoutTarget(res); }}
-                                        title={t("btnEarlyCheckout", { defaultValue: "Check Out" })}
-                                      >
-                                        {actionLoading === res.id ? (
-                                          <span className="h-3 w-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                        ) : (
-                                          <LogOut className="h-3.5 w-3.5" />
-                                        )}
-                                      </Button>
-                                    )}
-                                    {/* Change Dates — for UPCOMING or ACTIVE + non-read-only */}
-                                    {(res.status === "UPCOMING" || res.status === "ACTIVE") && canPerResAction && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 text-sky-600 hover:bg-sky-50"
-                                        onClick={(e) => { e.stopPropagation(); setExtendTarget(res); setExtendForm({ checkIn: res.checkIn, checkOut: res.checkOut }); }}
-                                        title={t("btnChangeDates", { defaultValue: "Change Dates" })}
-                                      >
-                                        <CalendarClock className="h-3.5 w-3.5" />
-                                      </Button>
-                                    )}
-                                    {/* Shift Room — for UPCOMING or ACTIVE + non-read-only */}
-                                    {(res.status === "UPCOMING" || res.status === "ACTIVE") && canPerResAction && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 text-violet-600 hover:bg-violet-50"
-                                        onClick={(e) => { e.stopPropagation(); setShiftTarget(res); setShiftRoomId(""); }}
-                                        title={t("btnShiftRoom", { defaultValue: "Change Room" })}
-                                      >
-                                        <ArrowRightLeft className="h-3.5 w-3.5" />
-                                      </Button>
-                                    )}
-                                    {/* Cancel — only for UPCOMING + group must be CONFIRMED or PENDING */}
-                                    {res.status === "UPCOMING" && canPerResAction && (gs === "PENDING" || gs === "CONFIRMED") && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 text-rose-600 hover:bg-rose-50"
-                                        disabled={actionLoading === res.id}
-                                        onClick={(e) => { e.stopPropagation(); handleResCancel(res.id); }}
-                                        title={t("btnCancelReservation", { defaultValue: "Cancel Reservation" })}
-                                      >
-                                        <XCircle className="h-3.5 w-3.5" />
-                                      </Button>
-                                    )}
-                                    {/* Unlink from group — only when PENDING or CONFIRMED (can't unlink from an active/completed group) */}
-                                    {(gs === "PENDING" || gs === "CONFIRMED") && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                        disabled={unlinkingId === res.id}
-                                        onClick={(e) => { e.stopPropagation(); handleUnlinkReservation(res.id); }}
-                                        title={t("titleRemoveFromGroup")}
-                                      >
-                                        {unlinkingId === res.id ? (
-                                          <span className="h-3 w-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                        ) : (
-                                          <X className="h-3.5 w-3.5" />
-                                        )}
-                                      </Button>
-                                    )}
-                                  </div>
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -2317,118 +2092,6 @@ export default function GroupBookingsPage() {
               </div>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Change Dates Dialog (per-reservation) ── */}
-      <Dialog open={!!extendTarget} onOpenChange={(open) => { if (!open) setExtendTarget(null); }}>
-        <DialogContent
-          className="sm:max-w-[400px]"
-          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "400px" }}
-          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CalendarClock className="h-4 w-4" />
-              {t("dlgChangeDatesTitle", { defaultValue: "Change Reservation Dates" })}
-            </DialogTitle>
-            <DialogDescription>
-              {extendTarget?.guest?.name ?? ""} — Room {extendTarget?.room?.number ?? ""}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 py-2">
-            <div className="grid gap-2">
-              <Label>{t("lblcheckinDate")}</Label>
-              <Input type="date" value={extendForm.checkIn} onChange={(e) => setExtendForm({ ...extendForm, checkIn: e.target.value })} />
-            </div>
-            <div className="grid gap-2">
-              <Label>{t("lblcheckoutDate")}</Label>
-              <Input type="date" value={extendForm.checkOut} onChange={(e) => setExtendForm({ ...extendForm, checkOut: e.target.value })} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setExtendTarget(null)}>{t("btnCancel")}</Button>
-            <Button onClick={handleExtendSave} disabled={actionLoading === extendTarget?.id}>
-              {actionLoading === extendTarget?.id ? (
-                <span className="h-3 w-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1" />
-              ) : null}
-              {t("btnSave", { defaultValue: "Save" })}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Shift Room Dialog (per-reservation) ── */}
-      <Dialog open={!!shiftTarget} onOpenChange={(open) => { if (!open) setShiftTarget(null); }}>
-        <DialogContent
-          className="sm:max-w-[400px]"
-          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "400px" }}
-          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ArrowRightLeft className="h-4 w-4" />
-              {t("dlgShiftRoomTitle", { defaultValue: "Change Room" })}
-            </DialogTitle>
-            <DialogDescription>
-              {shiftTarget?.guest?.name ?? ""} — currently in Room {shiftTarget?.room?.number ?? ""}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-2 py-2">
-            <Label>{t("lblRoom")} <span className="text-destructive">*</span></Label>
-            <Select value={shiftRoomId} onValueChange={setShiftRoomId}>
-              <SelectTrigger><SelectValue placeholder={t("placeholderSelectRoom")} /></SelectTrigger>
-              <SelectContent>
-                {rooms.filter((r) => r.status === "AVAILABLE" && r.id !== shiftTarget?.roomId).map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {r.number}{r.name ? ` — ${r.name}` : ""}
-                    {r.type ? ` (${r.type})` : ""}
-                    {r.pricePerNight ? ` — ${r.pricePerNight} ETB` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShiftTarget(null)}>{t("btnCancel")}</Button>
-            <Button onClick={handleShiftRoom} disabled={!shiftRoomId || actionLoading === shiftTarget?.id}>
-              {actionLoading === shiftTarget?.id ? (
-                <span className="h-3 w-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1" />
-              ) : null}
-              {t("btnShift", { defaultValue: "Change Room" })}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Early Checkout Confirmation ── */}
-      <Dialog open={!!earlyCheckoutTarget} onOpenChange={(open) => { if (!open) setEarlyCheckoutTarget(null); }}>
-        <DialogContent
-          className="sm:max-w-[400px]"
-          style={{ left: "auto", right: "1rem", transform: "translateY(-50%)", width: "auto", maxWidth: "400px" }}
-          overlayStyle={{ backgroundColor: "transparent", backdropFilter: "none", WebkitBackdropFilter: "none" }}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <LogOut className="h-4 w-4 text-amber-600" />
-              {t("dlgCheckoutTitle", { defaultValue: "Check Out Guest" })}
-            </DialogTitle>
-            <DialogDescription>
-              {earlyCheckoutTarget?.guest?.name ?? ""} — Room {earlyCheckoutTarget?.room?.number ?? ""}
-            </DialogDescription>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground py-2">
-            {t("dlgCheckoutConfirm", { defaultValue: "This will check out the guest, mark the reservation as completed, and free up the room. Are you sure?" })}
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEarlyCheckoutTarget(null)}>{t("btnCancel")}</Button>
-            <Button onClick={handleEarlyCheckout} disabled={actionLoading === earlyCheckoutTarget?.id} className="bg-amber-600 hover:bg-amber-700">
-              {actionLoading === earlyCheckoutTarget?.id ? (
-                <span className="h-3 w-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1" />
-              ) : null}
-              {t("btnConfirmCheckout", { defaultValue: "Check Out" })}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
