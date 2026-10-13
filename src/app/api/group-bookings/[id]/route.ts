@@ -20,6 +20,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         reservations: {
           include: {
             guest: { select: { id: true, name: true, phone: true, email: true } },
+            // Include `room` so consumers can render `res.room.number` without
+            // crashing with "cannot read properties of undefined (reading 'number')".
+            // Reservations without a room return room: null — guards in the UI
+            // already handle that case.
+            room: { select: { id: true, number: true, name: true, type: true, pricePerNight: true } },
           },
           orderBy: { checkIn: "asc" },
         },
