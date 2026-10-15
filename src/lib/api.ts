@@ -153,8 +153,13 @@ export const apiJointLogout = async () => {
 export const apiDashboard = () => req("/api/dashboard");
 
 // Rooms
-export const apiGetRooms = async (q?: string) => {
-  const res = await req(`/api/rooms${q ? `?q=${q}` : ""}`);
+export const apiGetRooms = async (q?: string, opts?: { availableFrom?: string; availableTo?: string }) => {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (opts?.availableFrom) params.set("availableFrom", opts.availableFrom);
+  if (opts?.availableTo) params.set("availableTo", opts.availableTo);
+  const qs = params.toString();
+  const res = await req(`/api/rooms${qs ? `?${qs}` : ""}`);
   // API returns { rooms: [...] } — unwrap to array
   if (res && Array.isArray(res.rooms)) return res.rooms;
   return Array.isArray(res) ? res : [];

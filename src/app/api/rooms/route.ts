@@ -56,6 +56,16 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const q = searchParams.get("q");
+    // NEW: date-aware availability filter.
+    //   ?availableFrom=YYYY-MM-DD&availableTo=YYYY-MM-DD
+    // When BOTH are provided, the response only includes rooms that have NO
+    // overlapping reservation in [availableFrom, availableTo). This is the
+    // half-open interval — a previous guest checking out on `availableFrom`
+    // does NOT conflict with a new guest checking in on the same day.
+    // Excludes MAINTENANCE rooms regardless (they're out of service).
+    const availableFrom = searchParams.get("availableFrom");
+    const availableTo = searchParams.get("availableTo");
+    const useDateFilter = !!(availableFrom && availableTo && availableTo > availableFrom);
 
     if (q) {
       where.OR = [
@@ -79,6 +89,11 @@ export async function GET(req: NextRequest) {
       conditions.push(`"providerId" = $${paramIdx}`);
       params.push(where.providerId);
       paramIdx++;
+    }
+    // When date-filtering, also exclude MAINTENANCE rooms — they're out of
+    // service and shouldn't be bookable even if they have no reservations.
+    if (useDateFilter) {
+      conditions.push(`"status" != 'MAINTENANCE'`);
     }
 
     const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
@@ -112,7 +127,7 @@ export async function GET(req: NextRequest) {
     // Serialize ALL fields — $queryRawUnsafe returns BigInt for INT
     // columns and Date for TIMESTAMP columns. Both cause JSON.stringify
     // to throw, which makes NextResponse.json() return an empty response.
-    const rooms = roomsRaw.map((r) => ({
+    let rooms = roomsRaw.map((r) => ({
       id: String(r.id),
       number: String(r.number),
       name: String(r.name || ""),
@@ -129,6 +144,24 @@ export async function GET(req: NextRequest) {
       createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt || ""),
       updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : String(r.updatedAt || ""),
     }));
+
+    // ── Date-aware availability filter ──
+    // When `availableFrom` + `availableTo` are provided, exclude any room
+    // that has an UPCOMING or ACTIVE reservation overlapping the requested
+    // window. Half-open interval: existing.checkOut === new.checkIn is OK.
+    // CANCELLED or COMPLETED reservations don't block the room.
+    if (useDateFilter && availableFrom && availableTo) {
+      const conflicting = await db.reservation.findMany({
+        where: {
+          status: { in: ["UPCOMING", "ACTIVE"] },
+          checkIn: { lt: availableTo },
+          checkOut: { gt: availableFrom },
+        },
+        select: { roomId: true },
+      });
+      const conflictingRoomIds = new Set(conflicting.map((r) => r.roomId));
+      rooms = rooms.filter((r) => !conflictingRoomIds.has(r.id));
+    }
 
     return NextResponse.json({ rooms });
   } catch (error) {

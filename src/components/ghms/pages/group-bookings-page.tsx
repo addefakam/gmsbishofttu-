@@ -386,9 +386,9 @@ export default function GroupBookingsPage() {
     }
   }, []);
 
-  const fetchRooms = useCallback(async () => {
+  const fetchRooms = useCallback(async (opts?: { availableFrom?: string; availableTo?: string }) => {
     try {
-      const data = await apiGetRooms();
+      const data = await apiGetRooms(undefined, opts);
       // apiGetRooms already unwraps { rooms: [...] } to array
       setRooms(Array.isArray(data) ? data : []);
     } catch {
@@ -403,9 +403,38 @@ export default function GroupBookingsPage() {
   useEffect(() => {
     if (createOpen || addReservationOpen) {
       fetchGuests();
+      // Initial load — no date filter (shows all rooms regardless of status).
+      // The date-aware re-fetch below keeps this list up to date as the
+      // operator picks start/end dates in the Create Group dialog.
       fetchRooms();
     }
   }, [createOpen, addReservationOpen, fetchGuests, fetchRooms]);
+
+  // ── Date-aware room availability for the Create Group dialog ──
+  // When the operator picks both start AND end dates, re-fetch rooms filtered
+  // by date availability — only rooms with NO conflicting reservation in
+  // [startDate, endDate) are returned. This lets operators pick rooms that
+  // are statically "OCCUPIED" or "RESERVED" but happen to be free on the
+  // selected dates. MAINTENANCE rooms are always excluded by the API.
+  useEffect(() => {
+    if (!createOpen) return;
+    if (!startDate || !endDate || endDate <= startDate) return;
+    fetchRooms({ availableFrom: startDate, availableTo: endDate });
+  }, [createOpen, startDate, endDate, fetchRooms]);
+
+  // ── Prune picked rooms that are no longer in the available set ──
+  // When the rooms list changes (e.g. dates changed and a previously-picked
+  // room is now booked), drop those IDs from pickedRoomIds so the operator
+  // doesn't accidentally try to book an unavailable room.
+  useEffect(() => {
+    if (!createOpen) return;
+    if (pickedRoomIds.length === 0) return;
+    const availableIds = new Set(rooms.map((r) => r.id));
+    setPickedRoomIds((prev) => {
+      const filtered = prev.filter((id) => availableIds.has(id));
+      return filtered.length === prev.length ? prev : filtered;
+    });
+  }, [createOpen, rooms, pickedRoomIds.length]);
 
   const resetCreateForm = () => {
     setName("");
@@ -1757,56 +1786,73 @@ export default function GroupBookingsPage() {
                 </div>
               </div>
 
-              {/* Available rooms multi-select — only show rooms that are
-                  AVAILABLE (or already picked) so the operator can't accidentally
-                  book an occupied room. Rooms already picked by this form
-                  are shown as selected (highlighted). */}
+              {/* Available rooms multi-select — the API has already filtered
+                  out rooms that have conflicting reservations in the selected
+                  date window, so we show ALL rooms returned (even those
+                  whose static `status` is OCCUPIED/RESERVED — they're free
+                  on the picked dates). MAINTENANCE rooms are excluded by
+                  the API. If no dates are picked yet, we fall back to showing
+                  all non-MAINTENANCE rooms. */}
               {totalGuests && Number(totalGuests) > 0 && (
                 <div className="grid gap-2">
                   <Label className="text-xs">
-                    {t("lblAvailableRooms", { defaultValue: "Available Rooms (click to pick)" })}
+                    {startDate && endDate && endDate > startDate
+                      ? t("lblAvailableRoomsForDates", { defaultValue: "Available rooms for {{from}} → {{to}} (click to pick)", from: startDate, to: endDate })
+                      : t("lblAvailableRooms", { defaultValue: "Available Rooms (pick dates to filter by availability)" })}
                   </Label>
+                  {!(startDate && endDate && endDate > startDate) && (
+                    <p className="text-[11px] text-amber-600">
+                      {t("hintPickDatesForAvailability", { defaultValue: "Pick start + end dates above to see only rooms that are free in that window." })}
+                    </p>
+                  )}
                   <div className="max-h-44 overflow-y-auto border rounded-md p-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                    {rooms
-                      .filter((r) => (!r.status || r.status === "AVAILABLE") || pickedRoomIds.includes(r.id))
-                      .map((r) => {
-                        const picked = pickedRoomIds.includes(r.id);
-                        return (
-                          <button
-                            key={r.id}
-                            type="button"
-                            onClick={() => {
-                              if (picked) {
-                                setPickedRoomIds(pickedRoomIds.filter((x) => x !== r.id));
-                              } else {
-                                // Don't exceed the totalGuests cap.
-                                const cap = Number(totalGuests) || 0;
-                                if (cap > 0 && pickedRoomIds.length >= cap) {
-                                  toast.error(t("toastRoomCapReached", { defaultValue: `You can only pick ${cap} room(s). Increase the total guests count to pick more.` , count: cap }));
-                                  return;
-                                }
-                                setPickedRoomIds([...pickedRoomIds, r.id]);
+                    {rooms.map((r) => {
+                      const picked = pickedRoomIds.includes(r.id);
+                      const isStaticAvailable = !r.status || r.status === "AVAILABLE";
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => {
+                            if (picked) {
+                              setPickedRoomIds(pickedRoomIds.filter((x) => x !== r.id));
+                            } else {
+                              // Don't exceed the totalGuests cap.
+                              const cap = Number(totalGuests) || 0;
+                              if (cap > 0 && pickedRoomIds.length >= cap) {
+                                toast.error(t("toastRoomCapReached", { defaultValue: `You can only pick ${cap} room(s). Increase the total guests count to pick more.`, count: cap }));
+                                return;
                               }
-                            }}
-                            className={`text-left px-2 py-1.5 rounded text-xs border transition-colors ${
-                              picked
-                                ? "bg-emerald-50 border-emerald-300 text-emerald-700"
-                                : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
-                            }`}
-                          >
-                            <span className="font-medium">{r.number}</span>
-                            {r.name && r.name !== `Room ${r.number}` && (
-                              <span className="text-muted-foreground"> · {r.name}</span>
-                            )}
-                            <span className="block text-[10px] text-muted-foreground">
-                              {r.type} · {r.pricePerNight?.toLocaleString() ?? 0} ETB
+                              setPickedRoomIds([...pickedRoomIds, r.id]);
+                            }
+                          }}
+                          className={`text-left px-2 py-1.5 rounded text-xs border transition-colors ${
+                            picked
+                              ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                              : isStaticAvailable
+                                ? "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
+                                : "bg-amber-50 border-amber-200 hover:bg-amber-100 text-amber-800"
+                          }`}
+                          title={!isStaticAvailable ? `Status: ${r.status} (free on selected dates)` : undefined}
+                        >
+                          <span className="font-medium">{r.number}</span>
+                          {r.name && r.name !== `Room ${r.number}` && (
+                            <span className="text-muted-foreground"> · {r.name}</span>
+                          )}
+                          <span className="block text-[10px] text-muted-foreground">
+                            {r.type} · {r.pricePerNight?.toLocaleString() ?? 0} ETB
+                          </span>
+                          {!isStaticAvailable && (
+                            <span className="block text-[9px] text-amber-700 font-medium">
+                              {t("badgeFreeOnDates", { defaultValue: "Free on your dates" })}
                             </span>
-                          </button>
-                        );
-                      })}
-                    {rooms.filter((r) => (!r.status || r.status === "AVAILABLE") || pickedRoomIds.includes(r.id)).length === 0 && (
+                          )}
+                        </button>
+                      );
+                    })}
+                    {rooms.length === 0 && (
                       <p className="col-span-full text-center text-xs text-muted-foreground py-3">
-                        {t("noAvailableRooms", { defaultValue: "No available rooms. All rooms are occupied or reserved." })}
+                        {t("noAvailableRooms", { defaultValue: "No available rooms for the selected dates. Try different dates or add more rooms." })}
                       </p>
                     )}
                   </div>
