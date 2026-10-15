@@ -1213,18 +1213,24 @@ export default function GroupBookingsPage() {
             //               Can also check in individual guests (auto-transitions to IN_PROGRESS).
             // CONFIRMED   → can check in (all + individual), pay, edit dates. Cannot add guests.
             // IN_PROGRESS → can check out, pay, per-reservation actions. Cannot add guests or check in new guests.
-            // COMPLETED   → read-only (no actions).
+            // COMPLETED   → STILL EDITABLE — operator can reopen to fix mistakes, add late-arriving
+            //               guests, edit dates, pay outstanding balance, etc. (was previously read-only)
             // CANCELLED   → read-only (only delete allowed).
             const gs = group.status;
-            const canAddGuests = gs === "PENDING";
-            const canAutoAssign = gs === "PENDING";
-            const canEditDates = gs === "PENDING" || gs === "CONFIRMED";
-            const canCheckinAll = (gs === "PENDING" || gs === "CONFIRMED") && upcomingCount > 0;
-            const canCheckoutAll = gs === "IN_PROGRESS" && activeCount > 0;
-            const canPay = gs === "PENDING" || gs === "CONFIRMED" || gs === "IN_PROGRESS";
-            const canDelete = gs === "PENDING" || gs === "CANCELLED";
-            const isReadOnly = gs === "COMPLETED" || gs === "CANCELLED";
-            // Per-reservation actions: available in PENDING, CONFIRMED, IN_PROGRESS
+            const isConfirmedLike = gs === "CONFIRMED" || gs === "PENDING";
+            // COMPLETED is now editable — treat it like IN_PROGRESS for most actions,
+            // but ALSO allow adding guests (operator may want to extend the stay or
+            // add a late-arriving guest to a completed group).
+            const canAddGuests = isConfirmedLike || gs === "COMPLETED";
+            const canAutoAssign = isConfirmedLike || gs === "COMPLETED";
+            const canEditDates = isConfirmedLike || gs === "IN_PROGRESS" || gs === "COMPLETED";
+            const canCheckinAll = (isConfirmedLike || gs === "COMPLETED") && upcomingCount > 0;
+            const canCheckoutAll = (gs === "IN_PROGRESS" || gs === "COMPLETED") && activeCount > 0;
+            const canPay = isConfirmedLike || gs === "IN_PROGRESS" || gs === "COMPLETED";
+            const canDelete = isConfirmedLike || gs === "CANCELLED" || gs === "COMPLETED";
+            // Only CANCELLED is fully read-only now. COMPLETED is editable.
+            const isReadOnly = gs === "CANCELLED";
+            // Per-reservation actions: available in PENDING, CONFIRMED, IN_PROGRESS, COMPLETED
             const canPerResAction = !isReadOnly;
 
             return (
@@ -1496,8 +1502,8 @@ export default function GroupBookingsPage() {
                                 </TableCell>
                                 <TableCell>
                                   <div className="flex items-center gap-1">
-                                    {/* Check-in — for UPCOMING + group must be PENDING, CONFIRMED, or IN_PROGRESS */}
-                                    {res.status === "UPCOMING" && canPerResAction && (gs === "PENDING" || gs === "CONFIRMED" || gs === "IN_PROGRESS") && (
+                                    {/* Check-in — for UPCOMING + group must be PENDING, CONFIRMED, IN_PROGRESS, or COMPLETED */}
+                                    {res.status === "UPCOMING" && canPerResAction && (gs === "PENDING" || gs === "CONFIRMED" || gs === "IN_PROGRESS" || gs === "COMPLETED") && (
                                       <Button
                                         variant="ghost"
                                         size="icon"
@@ -1513,8 +1519,8 @@ export default function GroupBookingsPage() {
                                         )}
                                       </Button>
                                     )}
-                                    {/* Check-out — only for ACTIVE + group must be IN_PROGRESS */}
-                                    {res.status === "ACTIVE" && canPerResAction && gs === "IN_PROGRESS" && (
+                                    {/* Check-out — for ACTIVE + group must be IN_PROGRESS or COMPLETED */}
+                                    {res.status === "ACTIVE" && canPerResAction && (gs === "IN_PROGRESS" || gs === "COMPLETED") && (
                                       <Button
                                         variant="ghost"
                                         size="icon"
@@ -1554,8 +1560,8 @@ export default function GroupBookingsPage() {
                                         <ArrowRightLeft className="h-3.5 w-3.5" />
                                       </Button>
                                     )}
-                                    {/* Cancel — only for UPCOMING + group must be CONFIRMED or PENDING */}
-                                    {res.status === "UPCOMING" && canPerResAction && (gs === "PENDING" || gs === "CONFIRMED") && (
+                                    {/* Cancel — for UPCOMING + group must be CONFIRMED, PENDING, or COMPLETED */}
+                                    {res.status === "UPCOMING" && canPerResAction && (gs === "PENDING" || gs === "CONFIRMED" || gs === "COMPLETED") && (
                                       <Button
                                         variant="ghost"
                                         size="icon"
@@ -1567,8 +1573,9 @@ export default function GroupBookingsPage() {
                                         <XCircle className="h-3.5 w-3.5" />
                                       </Button>
                                     )}
-                                    {/* Unlink from group — only when PENDING or CONFIRMED (can't unlink from an active/completed group) */}
-                                    {(gs === "PENDING" || gs === "CONFIRMED") && (
+                                    {/* Unlink from group — allowed when PENDING, CONFIRMED, or COMPLETED
+                                        (can't unlink from an active/in-progress group — guest is physically there) */}
+                                    {(gs === "PENDING" || gs === "CONFIRMED" || gs === "COMPLETED") && (
                                       <Button
                                         variant="ghost"
                                         size="icon"
