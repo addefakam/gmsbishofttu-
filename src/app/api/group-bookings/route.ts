@@ -4,6 +4,7 @@ import { getAuthContext, getProviderFilter, AuthError } from "@/lib/tenant";
 import { logStaffActivity, getLogUserInfo } from "@/lib/staff-log";
 import { ensureNewTables } from "@/lib/ensure-tables";
 import { isValidPhone, isValidEmail } from "@/lib/utils";
+import { calculateStayTotal } from "@/lib/room-pricing";
 
 export async function GET(req: NextRequest) {
   try {
@@ -78,10 +79,50 @@ export async function POST(req: NextRequest) {
     if (!providerId) return NextResponse.json({ error: "Provider required" }, { status: 403 });
 
     const body = await req.json();
-    const { name, contactName, contactPhone, contactEmail, startDate, endDate, notes, discountType, discountAmount } = body;
+    const {
+      name,
+      contactName,
+      contactPhone,
+      contactEmail,
+      startDate,
+      endDate,
+      notes,
+      discountType,
+      discountAmount,
+      // NEW (count-based group creation):
+      //   totalGuests — number of guests in this group (e.g. 10)
+      //   roomIds    — array of room IDs the operator picked (length should equal totalGuests)
+      //   guestNames — OPTIONAL array of real guest names; if provided, replaces the
+      //                "Guest 1, Guest 2..." placeholders. Length should match totalGuests.
+      totalGuests,
+      roomIds,
+      guestNames,
+    } = body;
 
     if (!name || !startDate || !endDate) {
       return NextResponse.json({ error: "Name, startDate, and endDate are required" }, { status: 400 });
+    }
+
+    // Validate count-based fields if provided.
+    const guestCount = Number(totalGuests) || 0;
+    const pickedRoomIds: string[] = Array.isArray(roomIds) ? roomIds.filter((id: unknown) => typeof id === "string" && id.length > 0) : [];
+    const pastedNames: string[] = Array.isArray(guestNames) ? guestNames.map((n: unknown) => String(n || "").trim()).filter((n: string) => n.length > 0) : [];
+
+    if (guestCount > 0) {
+      if (guestCount < 1 || guestCount > 200) {
+        return NextResponse.json({ error: "Total guests must be between 1 and 200." }, { status: 400 });
+      }
+      if (pickedRoomIds.length !== guestCount) {
+        return NextResponse.json(
+          { error: `Please pick exactly ${guestCount} room(s) for ${guestCount} guest(s). You selected ${pickedRoomIds.length}.` },
+          { status: 400 }
+        );
+      }
+      // Duplicate room IDs would cause unique conflicts at check-in time — reject now.
+      const uniqueRoomIds = new Set(pickedRoomIds);
+      if (uniqueRoomIds.size !== pickedRoomIds.length) {
+        return NextResponse.json({ error: "Duplicate room selected. Each guest needs a different room." }, { status: 400 });
+      }
     }
 
     // Prevent past dates — group bookings are for future stays only.
@@ -170,9 +211,137 @@ export async function POST(req: NextRequest) {
       action: "CREATE_GROUP_BOOKING",
       targetType: "GROUP_BOOKING",
       targetId: groupBooking.id,
-      details: { name, startDate, endDate },
+      details: { name, startDate, endDate, totalGuests: guestCount },
       providerId,
     });
+
+    // ── Count-based creation: auto-create placeholder guests + reservations ──
+    // For each picked room, create a placeholder Guest ("Guest N" or the
+    // operator-provided name from the pastedNames array) and a Reservation
+    // linking the guest to the room. This lets operators skip the tedious
+    // "Add Guest" flow when they just need a block of rooms for a group.
+    if (guestCount > 0 && pickedRoomIds.length === guestCount) {
+      // Fetch room details (pricePerNight + weekend rate) for cost calculation.
+      const roomsData = await db.room.findMany({
+        where: { id: { in: pickedRoomIds } },
+        select: { id: true, number: true, name: true, pricePerNight: true, pricePerNightWeekend: true, status: true, providerId: true },
+      });
+
+      // Validate all rooms exist + belong to this provider.
+      if (roomsData.length !== pickedRoomIds.length) {
+        return NextResponse.json(
+          { error: "One or more selected rooms could not be found. Please refresh and try again." },
+          { status: 400 }
+        );
+      }
+      const wrongProvider = roomsData.find((r) => r.providerId !== providerId);
+      if (wrongProvider) {
+        return NextResponse.json({ error: `Room ${wrongProvider.number} does not belong to your property.` }, { status: 403 });
+      }
+
+      // Check for booking conflicts on each room in the [startDate, endDate) window.
+      const conflicts: string[] = [];
+      for (const roomId of pickedRoomIds) {
+        const overlap = await db.reservation.findFirst({
+          where: {
+            roomId,
+            status: { in: ["UPCOMING", "ACTIVE"] },
+            checkIn: { lt: endDate },
+            checkOut: { gt: startDate },
+          },
+          select: { id: true },
+        });
+        if (overlap) {
+          const r = roomsData.find((x) => x.id === roomId);
+          conflicts.push(r?.number || roomId);
+        }
+      }
+      if (conflicts.length > 0) {
+        // Clean up the group we just created — its rooms aren't actually bookable.
+        await db.groupBooking.delete({ where: { id: groupBooking.id } }).catch(() => {});
+        return NextResponse.json(
+          { error: `ROOM_CONFLICT: Rooms already booked: ${conflicts.join(", ")}. Pick different rooms.` },
+          { status: 409 }
+        );
+      }
+
+      // Calculate nights for the stay window (same for all rooms in the group).
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const diffMs = end.getTime() - start.getTime();
+      const nights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+      // Compute per-room cost using weekend-aware helper. Each room has its
+      // own rate (Standard vs Suite etc.), so we can't just multiply.
+      const reservationPayloads = pickedRoomIds.map((roomId, idx) => {
+        const room = roomsData.find((r) => r.id === roomId)!;
+        const subtotal = calculateStayTotal(startDate, endDate, {
+          pricePerNight: room.pricePerNight,
+          pricePerNightWeekend: room.pricePerNightWeekend,
+        });
+        // Use real name if operator provided one for this slot, else placeholder.
+        const guestName = pastedNames[idx] || `Guest ${idx + 1}`;
+        return { roomId, room, subtotal, guestName };
+      });
+
+      // Create everything in one transaction so a failure rolls back cleanly.
+      await db.$transaction(async (tx) => {
+        for (const item of reservationPayloads) {
+          // Create the placeholder Guest record.
+          const g = await tx.guest.create({
+            data: {
+              name: item.guestName,
+              phone: "",
+              providerId: providerId!,
+            },
+          });
+          // Create the Reservation linked to the guest + room + group.
+          await tx.reservation.create({
+            data: {
+              guestId: g.id,
+              roomId: item.roomId,
+              checkIn: startDate,
+              checkOut: endDate,
+              nights,
+              roomRate: item.room.pricePerNight,
+              totalCost: item.subtotal,
+              paidAmount: 0,
+              balance: item.subtotal,
+              paymentStatus: "PENDING",
+              status: "UPCOMING",
+              notes: "",
+              taxAmount: 0,
+              discountAmount: 0,
+              secondGuestName: "",
+              secondGuestPhone: "",
+              secondGuestIdNumber: "",
+              exceptionallyReserved: false,
+              exceptionReason: "",
+              providerId: providerId!,
+              groupBookingId: groupBooking.id,
+            },
+          });
+          // Mark the room as RESERVED so it doesn't get double-booked.
+          await tx.room.update({
+            where: { id: item.roomId },
+            data: { status: "RESERVED" },
+          });
+        }
+      });
+
+      // Recalculate totals on the group booking (totalRooms, totalGuests, totalCost).
+      const finalReservations = await db.reservation.findMany({
+        where: { groupBookingId: groupBooking.id },
+        select: { roomId: true, guestId: true, totalCost: true },
+      });
+      const totalRooms = new Set(finalReservations.map((r) => r.roomId)).size;
+      const totalGuestsCount = new Set(finalReservations.map((r) => r.guestId)).size;
+      const totalCostSum = finalReservations.reduce((sum, r) => sum + r.totalCost, 0);
+      await db.groupBooking.update({
+        where: { id: groupBooking.id },
+        data: { totalRooms, totalGuests: totalGuestsCount, totalCost: totalCostSum },
+      });
+    }
 
     return NextResponse.json(groupBooking, { status: 201 });
   } catch (error: unknown) {

@@ -293,6 +293,13 @@ export default function GroupBookingsPage() {
   // Group discount form fields
   const [discountType, setDiscountType] = useState<"AMOUNT" | "PERCENT">("AMOUNT");
   const [discountAmount, setDiscountAmount] = useState("");
+  // Count-based creation: instead of adding guests one-by-one, the operator
+  // enters a total guest count and picks that many rooms. The API auto-
+  // generates placeholder guests ("Guest 1", "Guest 2", ...). If the operator
+  // pastes names into the textarea, those replace the placeholders.
+  const [totalGuests, setTotalGuests] = useState("");
+  const [pickedRoomIds, setPickedRoomIds] = useState<string[]>([]);
+  const [guestNamesText, setGuestNamesText] = useState("");
 
   // Add reservation form
   const [resGuestId, setResGuestId] = useState("");
@@ -410,6 +417,9 @@ export default function GroupBookingsPage() {
     setNotes("");
     setDiscountType("AMOUNT");
     setDiscountAmount("");
+    setTotalGuests("");
+    setPickedRoomIds([]);
+    setGuestNamesText("");
   };
 
   const resetReservationForm = () => {
@@ -464,6 +474,44 @@ export default function GroupBookingsPage() {
       toast.error(t("toastDiscountPercentTooHigh", { defaultValue: "Discount percentage cannot exceed 100%" }));
       return;
     }
+
+    // ── Count-based creation validation ──
+    // If the operator entered a total guest count, they MUST pick exactly
+    // that many rooms. If they pasted names, the count must match.
+    const guestCount = totalGuests ? Number(totalGuests) : 0;
+    const pastedNames = guestNamesText
+      .split("\n")
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0);
+
+    if (guestCount > 0) {
+      if (isNaN(guestCount) || guestCount < 1 || guestCount > 200) {
+        toast.error(t("toastInvalidGuestCount", { defaultValue: "Total guests must be between 1 and 200." }));
+        return;
+      }
+      if (pickedRoomIds.length !== guestCount) {
+        toast.error(
+          t("toastRoomCountMismatch", {
+            defaultValue: `Please pick exactly ${guestCount} room(s) — you selected ${pickedRoomIds.length}.`,
+            count: guestCount,
+            selected: pickedRoomIds.length,
+          })
+        );
+        return;
+      }
+      // Names are OPTIONAL. But if provided, count must match.
+      if (pastedNames.length > 0 && pastedNames.length !== guestCount) {
+        toast.error(
+          t("toastNamesCountMismatch", {
+            defaultValue: `You pasted ${pastedNames.length} names but specified ${guestCount} guests. Please make them match.`,
+            pasted: pastedNames.length,
+            count: guestCount,
+          })
+        );
+        return;
+      }
+    }
+
     try {
       setCreating(true);
       await apiCreateGroupBooking({
@@ -475,6 +523,13 @@ export default function GroupBookingsPage() {
         notes: notes.trim(),
         discountType,
         discountAmount: discountNum,
+        // Only pass count-based fields if the operator provided them.
+        // Otherwise the API creates an empty group (legacy behavior).
+        ...(guestCount > 0 ? {
+          totalGuests: guestCount,
+          roomIds: pickedRoomIds,
+          guestNames: pastedNames.length === guestCount ? pastedNames : [],
+        } : {}),
       });
       setCreateOpen(false);
       resetCreateForm();
@@ -1625,6 +1680,158 @@ export default function GroupBookingsPage() {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
+            </div>
+
+            {/* ── Count-based group creation (NEW) ──
+                Instead of adding each guest one-by-one after creating the
+                group, the operator can enter a total guest count here and
+                pick that many rooms. The API auto-creates placeholder guests
+                ("Guest 1", "Guest 2", ...) and reservations for each room.
+                Names can optionally be pasted below to override placeholders. */}
+            <div className="border-t pt-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <p className="text-sm font-medium">
+                  {t("lblQuickGroupSetup", { defaultValue: "Quick Group Setup (optional)" })}
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground -mt-1">
+                {t("hintQuickGroup", { defaultValue: "Enter the total guest count and pick that many rooms. Guest names are optional — placeholders will be used if you skip them. You can also add more guests individually after creation." })}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="total-guests">
+                    {t("lblTotalGuests", { defaultValue: "Total Guests" })}
+                  </Label>
+                  <Input
+                    id="total-guests"
+                    type="number"
+                    min="1"
+                    max="200"
+                    placeholder="e.g. 10"
+                    value={totalGuests}
+                    onChange={(e) => {
+                      setTotalGuests(e.target.value);
+                      // If the operator reduces the count, trim any extra picked rooms.
+                      const n = Number(e.target.value) || 0;
+                      if (n > 0 && pickedRoomIds.length > n) {
+                        setPickedRoomIds(pickedRoomIds.slice(0, n));
+                      }
+                    }}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>
+                    {t("lblPickedRooms", { defaultValue: "Picked Rooms" })}
+                    {totalGuests && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {pickedRoomIds.length}/{totalGuests}
+                      </span>
+                    )}
+                  </Label>
+                  <div className="text-sm text-muted-foreground border rounded-md px-3 py-2 min-h-[38px] bg-muted/30">
+                    {pickedRoomIds.length === 0 ? (
+                      <span className="text-xs">
+                        {t("hintPickRoomsBelow", { defaultValue: "Pick rooms from the list below ↓" })}
+                      </span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {pickedRoomIds.map((rid) => {
+                          const r = rooms.find((x) => x.id === rid);
+                          return (
+                            <Badge key={rid} variant="secondary" className="text-xs">
+                              {r?.number ?? "?"}
+                              <button
+                                type="button"
+                                className="ml-1 hover:text-destructive"
+                                onClick={() => setPickedRoomIds(pickedRoomIds.filter((x) => x !== rid))}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Available rooms multi-select — only show rooms that are
+                  AVAILABLE (or already picked) so the operator can't accidentally
+                  book an occupied room. Rooms already picked by this form
+                  are shown as selected (highlighted). */}
+              {totalGuests && Number(totalGuests) > 0 && (
+                <div className="grid gap-2">
+                  <Label className="text-xs">
+                    {t("lblAvailableRooms", { defaultValue: "Available Rooms (click to pick)" })}
+                  </Label>
+                  <div className="max-h-44 overflow-y-auto border rounded-md p-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {rooms
+                      .filter((r) => (!r.status || r.status === "AVAILABLE") || pickedRoomIds.includes(r.id))
+                      .map((r) => {
+                        const picked = pickedRoomIds.includes(r.id);
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => {
+                              if (picked) {
+                                setPickedRoomIds(pickedRoomIds.filter((x) => x !== r.id));
+                              } else {
+                                // Don't exceed the totalGuests cap.
+                                const cap = Number(totalGuests) || 0;
+                                if (cap > 0 && pickedRoomIds.length >= cap) {
+                                  toast.error(t("toastRoomCapReached", { defaultValue: `You can only pick ${cap} room(s). Increase the total guests count to pick more.` , count: cap }));
+                                  return;
+                                }
+                                setPickedRoomIds([...pickedRoomIds, r.id]);
+                              }
+                            }}
+                            className={`text-left px-2 py-1.5 rounded text-xs border transition-colors ${
+                              picked
+                                ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                                : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
+                            }`}
+                          >
+                            <span className="font-medium">{r.number}</span>
+                            {r.name && r.name !== `Room ${r.number}` && (
+                              <span className="text-muted-foreground"> · {r.name}</span>
+                            )}
+                            <span className="block text-[10px] text-muted-foreground">
+                              {r.type} · {r.pricePerNight?.toLocaleString() ?? 0} ETB
+                            </span>
+                          </button>
+                        );
+                      })}
+                    {rooms.filter((r) => (!r.status || r.status === "AVAILABLE") || pickedRoomIds.includes(r.id)).length === 0 && (
+                      <p className="col-span-full text-center text-xs text-muted-foreground py-3">
+                        {t("noAvailableRooms", { defaultValue: "No available rooms. All rooms are occupied or reserved." })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Optional: paste guest names (one per line). If empty, the
+                  API generates "Guest 1, Guest 2, ..." placeholders. */}
+              {totalGuests && Number(totalGuests) > 0 && (
+                <div className="grid gap-2">
+                  <Label className="text-xs">
+                    {t("lblGuestNamesOptional", { defaultValue: "Guest Names (optional — one per line)" })}
+                  </Label>
+                  <Textarea
+                    rows={Math.min(8, Math.max(3, Number(totalGuests) || 3))}
+                    placeholder={`Guest 1\nGuest 2\nGuest 3`}
+                    value={guestNamesText}
+                    onChange={(e) => setGuestNamesText(e.target.value)}
+                    className="text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    {t("hintGuestNamesOptional", { defaultValue: "Leave blank to auto-generate placeholders. You can fill in real names later from the group's reservation list." })}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Group Discount */}
