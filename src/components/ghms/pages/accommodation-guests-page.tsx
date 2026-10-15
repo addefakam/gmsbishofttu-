@@ -71,6 +71,37 @@ interface Reservation {
   secondGuestName?: string; secondGuestPhone?: string; secondGuestIdNumber?: string;
   exceptionallyReserved?: boolean; exceptionReason?: string;
   createdAt: string;
+  // Group booking info — populated by GET /api/reservations via a LEFT JOIN
+  // to GroupBooking. Used by getGuestDisplayName() to swap placeholder
+  // "Guest 1", "Guest 2", ... names for the group/organization name.
+  groupBookingId?: string | null;
+  groupBookingName?: string | null;
+}
+
+// ── Display name helper for the Guest column ──
+// When a group booking is created via the Quick Group Setup flow, each
+// reservation gets a placeholder Guest record ("Guest 1", "Guest 2", ...).
+// In the Guests table we prefer to show the group/organization name
+// (e.g. "Bishoftu Police Training Cohort 12") instead of those placeholders.
+//
+// Rules:
+//   1. If the reservation has no groupBookingName → show guest.name as-is
+//   2. If guest.name matches the placeholder pattern /^Guest \d+$/ → show
+//      groupBookingName instead (with the placeholder as a small subtitle)
+//   3. If guest.name is a real name (not a placeholder) → show guest.name
+//      with groupBookingName as a small subtitle (group context)
+const PLACEHOLDER_GUEST_RE = /^Guest\s+\d+$/;
+
+function getGuestDisplayName(res: Reservation): { primary: string; subtitle?: string } {
+  const guestName = res.guest?.name || "";
+  const groupName = res.groupBookingName || "";
+  if (!groupName) {
+    return { primary: guestName || "—" };
+  }
+  if (PLACEHOLDER_GUEST_RE.test(guestName)) {
+    return { primary: groupName, subtitle: guestName };
+  }
+  return { primary: guestName || "—", subtitle: groupName };
 }
 
 // ── Check-in eligibility (mirrors the 3 backend gates on
@@ -460,6 +491,9 @@ export default function AccommodationGuestsPage() {
           // there), so we cross-reference the guests array via guestMap.
           const guest = r.guestId ? guestMap.get(r.guestId) : undefined;
           if (guest?.idNumber && guest.idNumber.toLowerCase().includes(q)) return true;
+          // Match against the group booking name — lets operators search
+          // "Police Training" and find all reservations in that group.
+          if ((r.groupBookingName || "").toLowerCase().includes(q)) return true;
           return false;
         }
       );
@@ -924,13 +958,27 @@ export default function AccommodationGuestsPage() {
                         />
                       )}
                       <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-medium ${r.status === "ACTIVE" ? "bg-emerald-100 text-emerald-700" : r.status === "UPCOMING" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
-                        {(r.guest?.name || "?").charAt(0).toUpperCase()}
+                        {(() => {
+                          const dn = getGuestDisplayName(r);
+                          return (dn.primary || "?").charAt(0).toUpperCase();
+                        })()}
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <p className="truncate text-sm font-medium">{r.guest?.name || "—"}</p>
+                          <p className="truncate text-sm font-medium">
+                            {(() => {
+                              const dn = getGuestDisplayName(r);
+                              return dn.primary;
+                            })()}
+                          </p>
                           {vip && <span className="text-[9px] text-amber-600 font-semibold">VIP</span>}
                         </div>
+                        {(() => {
+                          const dn = getGuestDisplayName(r);
+                          return dn.subtitle ? (
+                            <p className="text-[10px] text-slate-400 truncate">{dn.subtitle}</p>
+                          ) : null;
+                        })()}
                         <p className="text-[10px] text-muted-foreground">{guestPhone}{guestIdNumber ? ` | ${guestIdNumber}` : ""}</p>
                       </div>
                     </div>
@@ -1065,18 +1113,32 @@ export default function AccommodationGuestsPage() {
                             : r.status === "UPCOMING" ? "bg-blue-100 text-blue-700 ring-2 ring-blue-200/60"
                             : "bg-slate-100 text-slate-600"}`}
                           >
-                            {(r.guest?.name || "?").charAt(0).toUpperCase()}
+                            {(() => {
+                              const dn = getGuestDisplayName(r);
+                              return (dn.primary || "?").charAt(0).toUpperCase();
+                            })()}
                             {vip && (
                               <span className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-400 text-white text-[8px] font-bold ring-2 ring-white" title="VIP">★</span>
                             )}
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="text-sm font-semibold text-slate-900 truncate max-w-[200px]">{r.guest?.name || "—"}</p>
+                              <p className="text-sm font-semibold text-slate-900 truncate max-w-[200px]">
+                                {(() => {
+                                  const dn = getGuestDisplayName(r);
+                                  return dn.primary;
+                                })()}
+                              </p>
                               {r.exceptionallyReserved && (
                                 <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-300 px-1.5 py-0">{t("exceptionBadge")}</Badge>
                               )}
                             </div>
+                            {(() => {
+                              const dn = getGuestDisplayName(r);
+                              return dn.subtitle ? (
+                                <p className="text-[10px] text-slate-400 truncate max-w-[200px]">{dn.subtitle}</p>
+                              ) : null;
+                            })()}
                           </div>
                         </div>
                       </TableCell>
