@@ -134,6 +134,55 @@ interface Reservation {
   notes?: string;
   guest?: { id: string; name: string; phone: string; email: string };
   room?: { id: string; number: string; name: string; type: string; pricePerNight: number };
+  // Group booking info — used by getGuestDisplayName() to swap placeholder
+  // "Guest 1", "Guest 2", ... names for the group/organization name.
+  groupBookingId?: string | null;
+  groupBookingName?: string | null;
+}
+
+// ── Display name helper for the Guest column ──
+// When a group booking is created via the Quick Group Setup flow, each
+// reservation gets a placeholder Guest record ("Guest 1", "Guest 2", ...).
+// In the Group Bookings page we prefer to show the group/organization name
+// (e.g. "Bishoftu Police Training Cohort 12") instead of those placeholders.
+//
+// The optional `groupName` parameter lets the caller pass the parent
+// GroupBooking's `name` field directly — useful in this page where the
+// reservation's own groupBookingName might not be populated by the API,
+// but the parent group's name IS available in the outer scope.
+//
+// Rules:
+//   1. If no group name available → show guest.name as-is
+//   2. If guest.name matches the placeholder pattern /^Guest \d+$/ → show
+//      the group name instead (with the placeholder as a small subtitle)
+//   3. If guest.name is a real name (not a placeholder) → show guest.name
+//      with the group name as a small subtitle (group context)
+const PLACEHOLDER_GUEST_RE = /^Guest\s+\d+$/;
+
+function getGuestDisplayName(res: Reservation, groupName?: string): { primary: string; subtitle?: string } {
+  const guestName = res.guest?.name || "";
+  const group = groupName || res.groupBookingName || "";
+  if (!group) {
+    return { primary: guestName || "—" };
+  }
+  if (PLACEHOLDER_GUEST_RE.test(guestName)) {
+    return { primary: group, subtitle: guestName };
+  }
+  return { primary: guestName || "—", subtitle: group };
+}
+
+// ── Find parent group name for a reservation ──
+// Used by the action dialogs (detail, extend, shift, early checkout) to
+// pass the group's name to getGuestDisplayName() when the reservation's
+// own groupBookingName isn't populated by the API.
+function findParentGroupName(groupBookings: GroupBooking[], resId?: string): string | undefined {
+  if (!resId) return undefined;
+  for (const g of groupBookings) {
+    if (g.reservations?.some((r) => r.id === resId)) {
+      return g.name;
+    }
+  }
+  return undefined;
 }
 
 // ── Check-in eligibility (mirrors /api/reservations/[id]/checkin) ──
@@ -993,7 +1042,7 @@ export default function GroupBookingsPage() {
         toast.error(
           t("toastBulkCheckinPartialFailed", {
             count: apiFailures.length,
-            guest: first.res.guest?.name || "—",
+            guest: getGuestDisplayName(first.res, group.name).primary,
             reason: first.message,
           })
         );
@@ -1395,7 +1444,16 @@ export default function GroupBookingsPage() {
                               >
                                 <TableCell className="font-medium">
                                   <div>
-                                    <div>{res.guest?.name ?? t("unknownGuest")}</div>
+                                    <div>{(() => {
+                                      const dn = getGuestDisplayName(res, group.name);
+                                      return dn.primary;
+                                    })()}</div>
+                                    {(() => {
+                                      const dn = getGuestDisplayName(res, group.name);
+                                      return dn.subtitle ? (
+                                        <div className="text-[10px] text-muted-foreground/70">{dn.subtitle}</div>
+                                      ) : null;
+                                    })()}
                                     {res.guest?.phone && (
                                       <div className="text-xs text-muted-foreground">{res.guest.phone}</div>
                                     )}
@@ -2457,7 +2515,18 @@ export default function GroupBookingsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground uppercase tracking-wide">{t("lblGuestDetail")}</p>
-                  <p className="text-sm font-medium">{detailRes.guest?.name ?? t("unknownGuest")}</p>
+                  <p className="text-sm font-medium">
+                    {(() => {
+                      const dn = getGuestDisplayName(detailRes, findParentGroupName(groupBookings, detailRes.id));
+                      return dn.primary;
+                    })()}
+                  </p>
+                  {(() => {
+                    const dn = getGuestDisplayName(detailRes, findParentGroupName(groupBookings, detailRes.id));
+                    return dn.subtitle ? (
+                      <p className="text-[10px] text-muted-foreground/70">{dn.subtitle}</p>
+                    ) : null;
+                  })()}
                   {detailRes.guest?.phone && <p className="text-xs text-muted-foreground">{detailRes.guest.phone}</p>}
                   {detailRes.guest?.email && <p className="text-xs text-muted-foreground">{detailRes.guest.email}</p>}
                 </div>
@@ -2586,7 +2655,7 @@ export default function GroupBookingsPage() {
               {t("dlgChangeDatesTitle", { defaultValue: "Change Reservation Dates" })}
             </DialogTitle>
             <DialogDescription>
-              {extendTarget?.guest?.name ?? ""} — Room {extendTarget?.room?.number ?? ""}
+              {extendTarget ? getGuestDisplayName(extendTarget, findParentGroupName(groupBookings, extendTarget.id)).primary : ""} — Room {extendTarget?.room?.number ?? ""}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 py-2">
@@ -2624,7 +2693,7 @@ export default function GroupBookingsPage() {
               {t("dlgShiftRoomTitle", { defaultValue: "Change Room" })}
             </DialogTitle>
             <DialogDescription>
-              {shiftTarget?.guest?.name ?? ""} — currently in Room {shiftTarget?.room?.number ?? ""}
+              {shiftTarget ? getGuestDisplayName(shiftTarget, findParentGroupName(groupBookings, shiftTarget.id)).primary : ""} — currently in Room {shiftTarget?.room?.number ?? ""}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2 py-2">
@@ -2667,7 +2736,7 @@ export default function GroupBookingsPage() {
               {t("dlgCheckoutTitle", { defaultValue: "Check Out Guest" })}
             </DialogTitle>
             <DialogDescription>
-              {earlyCheckoutTarget?.guest?.name ?? ""} — Room {earlyCheckoutTarget?.room?.number ?? ""}
+              {earlyCheckoutTarget ? getGuestDisplayName(earlyCheckoutTarget, findParentGroupName(groupBookings, earlyCheckoutTarget.id)).primary : ""} — Room {earlyCheckoutTarget?.room?.number ?? ""}
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground py-2">
