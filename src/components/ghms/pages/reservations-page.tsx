@@ -177,6 +177,40 @@ interface Reservation {
   secondGuestIdNumber?: string;
   exceptionallyReserved?: boolean;
   exceptionReason?: string;
+  // Group booking info — populated by GET /api/reservations via a LEFT JOIN
+  // to GroupBooking. Used by getGuestDisplayName() below to swap placeholder
+  // "Guest 1", "Guest 2", ... names for the group/organization name.
+  groupBookingId?: string | null;
+  groupBookingName?: string | null;
+}
+
+// ── Display name helper for the Guest column ──
+// When a group booking is created via the Quick Group Setup flow, each
+// reservation gets a placeholder Guest record ("Guest 1", "Guest 2", ...).
+// In the Reservations table we prefer to show the group/organization name
+// (e.g. "Bishoftu Police Training Cohort 12") instead of those placeholders,
+// because the operator recognizes the org name, not "Guest 7".
+//
+// Rules:
+//   1. If the reservation has no groupBookingName → show guest.name as-is
+//   2. If guest.name matches the placeholder pattern /^Guest \d+$/ → show
+//      groupBookingName instead (with the placeholder as a small subtitle)
+//   3. If guest.name is a real name (not a placeholder) → show guest.name
+//      with groupBookingName as a small subtitle (group context)
+const PLACEHOLDER_GUEST_RE = /^Guest\s+\d+$/;
+
+function getGuestDisplayName(res: Reservation): { primary: string; subtitle?: string } {
+  const guestName = res.guest?.name || "";
+  const groupName = res.groupBookingName || "";
+  if (!groupName) {
+    return { primary: guestName || "Unknown" };
+  }
+  // Placeholder name + group present → swap: org is the primary, placeholder is the subtitle.
+  if (PLACEHOLDER_GUEST_RE.test(guestName)) {
+    return { primary: groupName, subtitle: guestName };
+  }
+  // Real guest name + group present → keep guest name primary, group as subtitle.
+  return { primary: guestName || "Unknown", subtitle: groupName };
 }
 
 // ── Check-in eligibility (mirrors the 3 backend gates) ──
@@ -1117,6 +1151,7 @@ export default function ReservationsPage() {
       list = list.filter(
         (r) =>
           r.guest?.name?.toLowerCase().includes(q) ||
+          r.groupBookingName?.toLowerCase().includes(q) ||
           r.room?.number?.toLowerCase().includes(q) ||
           r.room?.name?.toLowerCase().includes(q) ||
           r.id.toLowerCase().includes(q)
@@ -1746,12 +1781,24 @@ export default function ReservationsPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-600 text-xs font-medium">
-                          {res.guest?.name?.charAt(0).toUpperCase() || "?"}
+                          {(() => {
+                            const dn = getGuestDisplayName(res);
+                            return dn.primary.charAt(0).toUpperCase() || "?";
+                          })()}
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">
-                            {res.guest?.name || "Unknown"}
+                            {(() => {
+                              const dn = getGuestDisplayName(res);
+                              return dn.primary;
+                            })()}
                           </p>
+                          {(() => {
+                            const dn = getGuestDisplayName(res);
+                            return dn.subtitle ? (
+                              <span className="block text-[10px] text-slate-400 truncate">{dn.subtitle}</span>
+                            ) : null;
+                          })()}
                           <p className="text-xs text-gray-400">{res.guest?.phone}</p>
                         </div>
                       </div>
@@ -2077,15 +2124,29 @@ export default function ReservationsPage() {
                     />
                   )}
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-violet-600 font-semibold text-sm">
-                    {res.guest?.name?.charAt(0).toUpperCase() || "?"}
+                    {(() => {
+                      const dn = getGuestDisplayName(res);
+                      return dn.primary.charAt(0).toUpperCase() || "?";
+                    })()}
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <h3 className="font-semibold text-gray-900 text-sm">{res.guest?.name || "Unknown"}</h3>
+                      <h3 className="font-semibold text-gray-900 text-sm">
+                        {(() => {
+                          const dn = getGuestDisplayName(res);
+                          return dn.primary;
+                        })()}
+                      </h3>
                       <Badge variant="outline" className={`${STATUS_BADGE[res.status]} text-[10px] px-1.5 py-0`}>
                         {STATUS_LABEL[res.status] || res.status}
                       </Badge>
                     </div>
+                    {(() => {
+                      const dn = getGuestDisplayName(res);
+                      return dn.subtitle ? (
+                        <p className="text-[10px] text-slate-400 truncate -mt-0.5">{dn.subtitle}</p>
+                      ) : null;
+                    })()}
                     <p className="text-xs text-gray-500">
                       Room {res.room?.number} · {res.room?.name}
                     </p>

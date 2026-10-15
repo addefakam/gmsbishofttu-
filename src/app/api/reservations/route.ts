@@ -115,10 +115,12 @@ export async function GET(req: NextRequest) {
       db.$queryRawUnsafe(
         `SELECT r.*, g."name" AS "guestName", g."phone" AS "guestPhone", g."idNumber" AS "guestIdNumber",
                 rm."number" AS "roomNumber", rm."name" AS "roomName",
-                rm."type"::text AS "roomType", rm."id" AS "roomId"
+                rm."type"::text AS "roomType", rm."id" AS "roomId",
+                gb."id" AS "groupBookingId", gb."name" AS "groupBookingName"
          FROM "Reservation" r
          LEFT JOIN "Guest" g ON g."id" = r."guestId"
          LEFT JOIN "Room" rm ON rm."id" = r."roomId"
+         LEFT JOIN "GroupBooking" gb ON gb."id" = r."groupBookingId"
          ${whereClause}
          ORDER BY r."createdAt" DESC
          LIMIT $${pi++} OFFSET $${pi++}`,
@@ -161,6 +163,11 @@ export async function GET(req: NextRequest) {
       exceptionReason: r.exceptionReason ? String(r.exceptionReason) : "",
       guest: r.guestName ? { id: String(r.guestId), name: String(r.guestName), phone: String(r.guestPhone || ""), idNumber: String(r.guestIdNumber || "") } : null,
       room: r.roomId ? { id: String(r.roomId), number: String(r.roomNumber || ""), name: String(r.roomName || ""), type: String(r.roomType || "") } : null,
+      // Group booking info — used by the UI to show the organization name
+      // instead of placeholder "Guest 1", "Guest 2", ... for group bookings
+      // created via the count-based Quick Group Setup flow.
+      groupBookingId: r.groupBookingId ? String(r.groupBookingId) : null,
+      groupBookingName: r.groupBookingName ? String(r.groupBookingName) : null,
     }));
 
     return NextResponse.json({ data: formattedReservations, total, page, limit, totalPages: Math.ceil(total / limit) });
