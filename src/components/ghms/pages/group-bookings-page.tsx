@@ -972,7 +972,7 @@ export default function GroupBookingsPage() {
 
       // Successes
       if (checked > 0) {
-        toast.success(t("toastCheckedIn", { count: checked }));
+        toast.success(t("toastCheckedIn", { n: checked }));
       }
 
       // Client-side pre-check blocked ones (date window, etc.)
@@ -1011,7 +1011,7 @@ export default function GroupBookingsPage() {
       setCheckingOut(true);
       const result = await apiGroupCheckout(checkoutTarget.id);
       const r = result as { checkedOut: number; total: number; message: string };
-      toast.success(r.message || t("toastCheckedOut", { count: r.checkedOut }));
+      toast.success(r.message || t("toastCheckedOut", { n: r.checkedOut }));
       setCheckoutTarget(null);
       fetchGroupBookings();
     } catch (err: unknown) {
