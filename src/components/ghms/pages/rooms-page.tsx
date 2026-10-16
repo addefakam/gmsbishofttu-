@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore } from "@/lib/store";
 import { formatDaysRemaining, formatCycle } from "@/lib/subscription";
 import { isDefaultRoomName, isCheckoutDue } from "@/lib/utils";
+import { calculateStayTotal } from "@/lib/room-pricing";
 import {
   apiGetRooms,
   apiCreateRoom,
@@ -606,13 +607,40 @@ export default function RoomsPage() {
   }, [shiftDialog, infoRoom, rooms]);
 
   // Extend cost calculation
+  // Uses weekend-aware pricing if the room has pricePerNightWeekend set:
+  // each night in [currentCheckOut, newCheckOut) is priced by its day-of-week
+  // (Fri + Sat = weekend rate, else weekday rate). Falls back to roomRate
+  // when the room has no weekend rate configured.
   const extendNights = useMemo(() => {
     if (!extendDialog || !extendDate) return 0;
     const diff = new Date(extendDate).getTime() - new Date(extendDialog.checkOut).getTime();
-    return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   }, [extendDialog, extendDate]);
 
-  const extendExtraCost = extendNights * (extendDialog?.roomRate || 0);
+  // Look up the Room record to get pricePerNight + pricePerNightWeekend.
+  // extendDialog is a Reservation, which only carries roomRate (a single
+  // number). We need the full Room to know if there's a weekend premium.
+  const extendRoom = useMemo(() => {
+    if (!extendDialog) return null;
+    const roomId = extendDialog.roomId || (extendDialog as unknown as { room?: { id?: string } }).room?.id;
+    return rooms.find((r) => r.id === roomId) || null;
+  }, [extendDialog, rooms]);
+
+  const extendExtraCost = useMemo(() => {
+    if (!extendDialog || extendNights <= 0) return 0;
+    if (extendRoom && extendRoom.pricePerNight != null) {
+      // Weekend-aware calc — iterates each night in [checkOut, newDate)
+      return calculateStayTotal(extendDialog.checkOut, extendDate, {
+        pricePerNight: extendRoom.pricePerNight,
+        pricePerNightWeekend: extendRoom.pricePerNightWeekend,
+      });
+    }
+    // Fallback: flat roomRate × nights (legacy behavior)
+    return extendNights * (extendDialog.roomRate || 0);
+  }, [extendDialog, extendDate, extendNights, extendRoom]);
+
+  // New total cost = original totalCost + extra cost of the extension
+  const extendNewTotalCost = (extendDialog?.totalCost || 0) + extendExtraCost;
 
   // ── Excel import ────────────────────────────────────────────────────────────
   const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2048,14 +2076,49 @@ export default function RoomsPage() {
           </DialogHeader>
           {extendDialog && (
             <div className="space-y-4">
+              {/* Guest + current booking summary */}
               <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">
                 <p className="text-sm font-medium">{extendDialog.guest?.name || t("guestFallback")}</p>
                 <p className="text-xs text-muted-foreground">
                   {t("extendCurrentCheckout")} <strong>{formatDate(extendDialog.checkOut)}</strong>
                   <span className="mx-1">·</span>
                   {extendDialog.roomRate > 0 && <span>{formatPrice(extendDialog.roomRate)}{t("perNight")}</span>}
+                  {extendRoom?.pricePerNightWeekend != null && Number(extendRoom.pricePerNightWeekend) > 0 && (
+                    <span className="ml-2 text-[10px] text-amber-600">
+                      ({formatPrice(extendRoom.pricePerNightWeekend)} {t("weekendRateLabel", { defaultValue: "Fri/Sat" })})
+                    </span>
+                  )}
                 </p>
               </div>
+
+              {/* Quick-pick buttons — most common extensions */}
+              <div>
+                <Label className="text-xs text-muted-foreground">
+                  {t("lblQuickExtend", { defaultValue: "Quick extend" })}
+                </Label>
+                <div className="grid grid-cols-4 gap-1.5 mt-1">
+                  {[1, 2, 3, 7].map((days) => {
+                    const base = new Date(extendDialog.checkOut);
+                    base.setDate(base.getDate() + days);
+                    const dateStr = base.toISOString().split("T")[0];
+                    const isActive = extendDate === dateStr;
+                    return (
+                      <Button
+                        key={days}
+                        type="button"
+                        variant={isActive ? "default" : "outline"}
+                        size="sm"
+                        className={`h-8 text-xs ${isActive ? "bg-amber-600 hover:bg-amber-700" : ""}`}
+                        onClick={() => setExtendDate(dateStr)}
+                      >
+                        {days === 7 ? t("quickExtendWeek", { defaultValue: "+1 week" }) : `+${days} ${days === 1 ? t("day", { defaultValue: "day" }) : t("days", { defaultValue: "days" })}`}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom date picker */}
               <div>
                 <Label>{t("lblnewCheckoutDate")} *</Label>
                 <Input
@@ -2066,12 +2129,60 @@ export default function RoomsPage() {
                   className="mt-1"
                 />
               </div>
+
+              {/* Old vs New comparison */}
               {extendNights > 0 && (
-                <div className="rounded-lg border-2 border-amber-200 bg-amber-50 p-3">
+                <div className="rounded-lg border-2 border-amber-200 bg-amber-50 p-3 space-y-2">
+                  {/* Old → New dates row */}
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="flex-1">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        {t("extendOldCheckout", { defaultValue: "Current" })}
+                      </p>
+                      <p className="font-medium text-muted-foreground line-through">
+                        {formatDate(extendDialog.checkOut)}
+                      </p>
+                    </div>
+                    <CalendarClock className="h-4 w-4 text-amber-600" />
+                    <div className="flex-1">
+                      <p className="text-[10px] uppercase tracking-wide text-amber-700">
+                        {t("extendNewCheckout", { defaultValue: "New" })}
+                      </p>
+                      <p className="font-bold text-amber-900">
+                        {formatDate(extendDate)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Separator className="bg-amber-200" />
+
+                  {/* Extra nights + extra cost */}
                   <div className="flex justify-between items-center text-sm">
-                    <span className="text-amber-700">{t("extendExtraNights", { nights: extendNights })}</span>
+                    <span className="text-amber-700">
+                      {t("extendExtraNights", { nights: extendNights })}
+                    </span>
                     <span className="font-bold text-amber-800">+{formatPrice(extendExtraCost)}</span>
                   </div>
+
+                  {/* New total */}
+                  <div className="flex justify-between items-center text-sm border-t border-amber-200 pt-2">
+                    <span className="text-amber-900 font-medium">
+                      {t("extendNewTotal", { defaultValue: "New total" })}
+                    </span>
+                    <span className="font-bold text-amber-900">{formatPrice(extendNewTotalCost)}</span>
+                  </div>
+
+                  {/* Balance after extension */}
+                  {(extendDialog.balance > 0 || extendExtraCost > 0) && (
+                    <div className="flex justify-between items-center text-xs text-rose-700">
+                      <span>
+                        {t("extendBalanceAfter", { defaultValue: "Balance due after extension" })}
+                      </span>
+                      <span className="font-semibold">
+                        {formatPrice(Math.max(0, (extendDialog.balance || 0) + extendExtraCost))}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
