@@ -288,7 +288,7 @@ const GROUP_STATUSES = ["PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CAN
 
 export default function GroupBookingsPage() {
   const { t } = useTranslation("groupBookings");
-  const { refreshKey } = useAppStore();
+  const { refreshKey, triggerRefresh } = useAppStore();
 
   const STATUS_LABELS: Record<string, string> = {
     PENDING: t("statusPENDING"),
@@ -612,6 +612,12 @@ export default function GroupBookingsPage() {
       setCreateOpen(false);
       resetCreateForm();
       await fetchGroupBookings();
+      // Trigger a global refresh so the Reservations + Guests pages
+      // (and any other subscribers to refreshKey) know to re-fetch their
+      // data. Without this, a newly created group's reservations + guests
+      // wouldn't appear on those pages until the operator manually
+      // navigates / refreshes.
+      triggerRefresh();
       toast.success(t("toastCreated"));
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t("toastFailedCreate"));
@@ -625,6 +631,9 @@ export default function GroupBookingsPage() {
       await apiUpdateGroupBooking(id, { status });
       toast.success(t("toastStatusUpdated", { status }));
       fetchGroupBookings();
+      // Status changes affect which reservations are visible/active on
+      // other pages — propagate the refresh.
+      triggerRefresh();
     } catch {
       toast.error(t("toastFailedUpdateStatus"));
     }
@@ -639,6 +648,9 @@ export default function GroupBookingsPage() {
       setDeleteTarget(null);
       if (detailId === deleteTarget.id) setDetailId(null);
       fetchGroupBookings();
+      // Deleting a group unlinks its reservations — refresh other pages
+      // so they reflect the updated reservation/guest state.
+      triggerRefresh();
     } catch {
       toast.error(t("toastFailedDelete"));
     } finally {
@@ -674,6 +686,9 @@ export default function GroupBookingsPage() {
       setNewGuestIdNumber("");
       setNewGuestIdType("");
       setShowAdditionalDetails(false);
+      // New guest created — propagate to Reservations/Guests pages so
+      // the new guest appears there without a manual refresh.
+      triggerRefresh();
       toast.success(t("toastGuestRegistered", { name: guest.name }));
       return guest;
     } catch {
@@ -760,6 +775,9 @@ export default function GroupBookingsPage() {
       // same room to another guest (which would fail with ROOM_CONFLICT).
       fetchGroupBookings();
       fetchRooms();
+      // New reservation + guest linked — propagate refresh so the
+      // Reservations/Guests pages reflect the new data immediately.
+      triggerRefresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t("toastFailedAddReservation"));
     } finally {
@@ -773,6 +791,7 @@ export default function GroupBookingsPage() {
       await apiUpdateReservation(reservationId, { groupBookingId: null });
       toast.success(t("toastReservationRemoved"));
       fetchGroupBookings();
+      triggerRefresh();
     } catch {
       toast.error(t("toastFailedRemoveReservation"));
     } finally {
@@ -794,6 +813,7 @@ export default function GroupBookingsPage() {
       }
       fetchGroupBookings();
       fetchRooms();
+      triggerRefresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t("toastFailedCheckin", { defaultValue: "Failed to check in" }));
     } finally {
@@ -809,6 +829,7 @@ export default function GroupBookingsPage() {
       toast.success(t("toastReservationCancelled", { defaultValue: "Reservation cancelled" }));
       fetchGroupBookings();
       fetchRooms();
+      triggerRefresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t("toastFailedCancel", { defaultValue: "Failed to cancel" }));
     } finally {
@@ -832,6 +853,7 @@ export default function GroupBookingsPage() {
       setExtendTarget(null);
       fetchGroupBookings();
       fetchRooms();
+      triggerRefresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t("toastFailedUpdate", { defaultValue: "Failed to update" }));
     } finally {
@@ -852,6 +874,7 @@ export default function GroupBookingsPage() {
       setShiftRoomId("");
       fetchGroupBookings();
       fetchRooms();
+      triggerRefresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t("toastFailedShift", { defaultValue: "Failed to change room" }));
     } finally {
@@ -877,6 +900,7 @@ export default function GroupBookingsPage() {
       setEarlyCheckoutTarget(null);
       fetchGroupBookings();
       fetchRooms();
+      triggerRefresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t("toastFailedCheckout", { defaultValue: "Failed to check out" }));
     } finally {
@@ -923,6 +947,9 @@ export default function GroupBookingsPage() {
       setEditDatesTarget(null);
       fetchGroupBookings();
       fetchRooms();
+      // Reservations in the group had their checkIn/checkOut changed —
+      // propagate to other pages.
+      triggerRefresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t("toastFailedUpdate", { defaultValue: "Failed to update dates" }));
     } finally {
@@ -947,6 +974,8 @@ export default function GroupBookingsPage() {
       }
       setDetailId(groupId);
       fetchGroupBookings();
+      // Auto-assign may have created new reservations + guests — propagate.
+      triggerRefresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("toastAutoAssignFailed");
       if (msg.includes("NO_ROOMS")) {
@@ -1049,6 +1078,9 @@ export default function GroupBookingsPage() {
       }
 
       fetchGroupBookings();
+      // Bulk check-in changed reservation statuses (UPCOMING → ACTIVE) and
+      // possibly group status (→ IN_PROGRESS). Propagate to other pages.
+      triggerRefresh();
     } catch {
       toast.error(t("toastBulkCheckinFailed"));
     }
@@ -1063,6 +1095,9 @@ export default function GroupBookingsPage() {
       toast.success(r.message || t("toastCheckedOut", { n: r.checkedOut }));
       setCheckoutTarget(null);
       fetchGroupBookings();
+      // Group checkout changed reservation statuses (ACTIVE → COMPLETED) and
+      // freed up rooms. Propagate so Rooms/Reservations pages refresh.
+      triggerRefresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("toastCheckoutFailed");
       toast.error(msg);
@@ -1099,6 +1134,8 @@ export default function GroupBookingsPage() {
       setPaymentOpen(false);
       setPaymentGroupId(null);
       fetchGroupBookings();
+      // Payment recorded against reservations — balances changed.
+      triggerRefresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("toastPaymentFailed");
       toast.error(msg);
