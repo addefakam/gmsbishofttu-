@@ -171,6 +171,9 @@ model Provider {
   messageTemplates MessageTemplate[]
   messageLogs      MessageLog[]
   tasks            Task[]
+  // ── Owner Visibility & Operational Control ──
+  endOfDayReports  EndOfDayReport[]
+  shiftHandovers   ShiftHandover[]
 
   @@index([status])
   @@index([createdAt])
