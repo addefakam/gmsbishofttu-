@@ -93,6 +93,67 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     });
 
+    // ── Side effects when group status changes to COMPLETED or CANCELLED ──
+    // When an admin manually changes the group status via the dropdown (not
+    // via the dedicated Check-Out All button), the reservations + rooms
+    // must also be updated. Otherwise:
+    //   - Rooms stay in OCCUPIED/RESERVED status forever → they don't appear
+    //     in the "Add Guest to Group" available-rooms list.
+    //   - Reservations stay in UPCOMING/ACTIVE status forever → they keep
+    //     counting against occupancy stats.
+    //
+    // When group → COMPLETED: mark all ACTIVE/UPCOMING reservations as
+    // COMPLETED, set actualCheckOut, free up their rooms (→ AVAILABLE).
+    // When group → CANCELLED: mark all ACTIVE/UPCOMING reservations as
+    // CANCELLED, free up their rooms (→ AVAILABLE).
+    if (status === "COMPLETED" || status === "CANCELLED") {
+      const now = new Date();
+      const activeReservations = await db.reservation.findMany({
+        where: { groupBookingId: id, status: { in: ["UPCOMING", "ACTIVE"] } },
+        select: { id: true, roomId: true, guestId: true, totalCost: true },
+      });
+
+      // Update each reservation's status + actualCheckOut (only for COMPLETED).
+      // Also update guest stats (totalStays, totalSpent) for COMPLETED groups.
+      for (const res of activeReservations) {
+        await db.reservation.update({
+          where: { id: res.id },
+          data: {
+            status,
+            ...(status === "COMPLETED" ? { actualCheckOut: now } : {}),
+          },
+        });
+
+        // Free up the room — but only if no OTHER reservation holds it
+        // (e.g. a future booking for the same room).
+        const otherActiveOnRoom = await db.reservation.count({
+          where: {
+            roomId: res.roomId,
+            id: { not: res.id },
+            status: { in: ["UPCOMING", "ACTIVE"] },
+          },
+        });
+        if (otherActiveOnRoom === 0) {
+          await db.room.update({
+            where: { id: res.roomId },
+            data: { status: "AVAILABLE" },
+          });
+        }
+
+        // For COMPLETED groups, update guest stats (totalStays + totalSpent).
+        // Skip for CANCELLED groups — no stay actually happened.
+        if (status === "COMPLETED") {
+          await db.guest.update({
+            where: { id: res.guestId },
+            data: {
+              totalStays: { increment: 1 },
+              totalSpent: { increment: res.totalCost || 0 },
+            },
+          });
+        }
+      }
+    }
+
     const { userId, userName } = getLogUserInfo(req);
     logStaffActivity({
       req, userId, userName,
