@@ -94,6 +94,21 @@ export default function OperatorFeaturesPage() {
       const res = await apiGetOperatorFeatures();
       if (res?.pages && Array.isArray(res.pages)) {
         setPages(res.pages);
+      } else {
+        // Defensive: API returned 200 but no `pages` array — build it from
+        // TOGGLABLE_PAGES defaults so the page still renders.
+        setPages([
+          { key: "dashboard", label: "Dashboard", icon: "LayoutDashboard", category: "core", enabled: true },
+          { key: "accommodation", label: "Accommodation", icon: "DoorOpen", category: "core", enabled: true },
+          { key: "reports", label: "Reports", icon: "BarChart3", category: "management", enabled: true },
+          { key: "resources", label: "Stock Management", icon: "Package", category: "operations", enabled: true },
+          { key: "expenses", label: "Expenses", icon: "Receipt", category: "operations", enabled: true },
+          { key: "group-bookings", label: "Group Bookings", icon: "Users", category: "operations", enabled: true },
+          { key: "guest-communication", label: "Messages", icon: "MessageSquare", category: "operations", enabled: true },
+          { key: "staff-logs", label: "Staff Activity", icon: "ScrollText", category: "operations", enabled: true },
+          { key: "my-subscription", label: "Subscription", icon: "CreditCard", category: "billing", enabled: true },
+          { key: "settings", label: "Settings", icon: "Settings", category: "core", enabled: true },
+        ]);
       }
       if (res?.ownerFeatures && Array.isArray(res.ownerFeatures)) {
         setOwnerFeatures(res.ownerFeatures);
@@ -111,13 +126,33 @@ export default function OperatorFeaturesPage() {
           ...f,
           enabled: res.ownerFeatureFlags[f.key] !== false,
         })));
+      } else {
+        // No owner features returned at all — default all 4 to enabled so
+        // the page renders with the toggle UI visible.
+        setOwnerFeatures([
+          { key: "ownerDashboard", label: "Owner Dashboard Enhancements", description: "Real-time KPIs, alerts, and revenue chart on the dashboard.", icon: "TrendingUp", category: "owner-visibility", enabled: true },
+          { key: "endOfDayReport", label: "End-of-Day Report + Cash Reconciliation", description: "Daily cash reconciliation with discrepancy detection + sign-off.", icon: "FileText", category: "owner-visibility", enabled: true },
+          { key: "shiftHandover", label: "Shift Handover Log", description: "Track shift openings, closings, and cash handovers.", icon: "RefreshCw", category: "operational-control", enabled: true },
+          { key: "maintenanceTickets", label: "Maintenance Ticket System", description: "Maintenance workflow from Open to Resolved with aging alerts.", icon: "Wrench", category: "operational-control", enabled: true },
+        ]);
       }
       // Persist to the global store so other components can read the flags
       // without an extra fetch (e.g. dashboard-page checks ownerDashboard flag).
       if (res?.ownerFeatureFlags) {
         setOwnerFeatureFlags(res.ownerFeatureFlags);
+      } else {
+        // Default all flags ON if API didn't return them.
+        setOwnerFeatureFlags({ ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true });
       }
-    } catch {
+    } catch (err: unknown) {
+      // Don't show the error toast if it's an auth redirect (the req()
+      // helper already redirected to login). Only show for genuine errors.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("Session expired") || msg.includes("Please sign in")) {
+        // Auth issue — req() already redirected. Don't double-toast.
+        return;
+      }
+      console.error("[operator-features-page] fetchData error:", msg);
       toast.error(t("errorLoad"));
     } finally {
       setLoading(false);
