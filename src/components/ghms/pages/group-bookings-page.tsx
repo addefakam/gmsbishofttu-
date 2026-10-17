@@ -1166,7 +1166,16 @@ export default function GroupBookingsPage() {
   };
 
   const selectedGroup = groupBookings.find((g) => g.id === addReservationGroupId);
-  const groupRoomIds = new Set(selectedGroup?.reservations?.map((r) => r.roomId) || []);
+  // Rooms already booked in this group (UPCOMING or ACTIVE only).
+  // COMPLETED/CANCELLED reservations have already freed up their rooms,
+  // so the room should be re-assignable to a new guest in the same group.
+  // Without this filter, a room used in a previous completed reservation
+  // would be permanently blocked from re-use in the same group.
+  const groupRoomIds = new Set(
+    selectedGroup?.reservations
+      ?.filter((r) => r.status === "UPCOMING" || r.status === "ACTIVE")
+      .map((r) => r.roomId) || []
+  );
   const availableRooms = rooms.filter(
     (r) => (!r.status || r.status === "AVAILABLE") && !groupRoomIds.has(r.id)
   );
