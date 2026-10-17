@@ -1272,7 +1272,7 @@
     "toastBulkNoneEligible": "Filataman qabiyyee keessaa tokkollee hin danda'amne.",
     "btnCancel": "Dhiisi",
     "btnToggleSecondGuest": "Keessummaa Lammaffaa",
-    "confirmCancelDesc": "Qabiyyee {{guest}} kan Kutaa {{room}} jiru haquu barbaaddaa?"
+    "confirmCancelDesc": "Beellama {{guest}} (Kutaa {{room}}) haqa?"
   },
   "operations": {
     "title": "Hojiiwwan",

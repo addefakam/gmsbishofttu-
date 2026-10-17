@@ -1272,7 +1272,7 @@
     "toastBulkNoneEligible": "None of the selected reservations are eligible for this action.",
     "btnCancel": "Cancel",
     "btnToggleSecondGuest": "Second Guest",
-    "confirmCancelDesc": "Cancel reservation for {{guest}} in Room {{room}}?"
+    "confirmCancelDesc": "Cancel {{guest}}'s reservation (Room {{room}})?"
   },
   "operations": {
     "title": "Operations",
@@ -3296,7 +3296,7 @@
     "statusCompleted": "Completed",
     "statusCancelled": "Cancelled",
     "btnCancel": "Cancel",
-    "confirmCancelDesc": "Cancel reservation for {{guest}} (Room {{room}})?",
+    "confirmCancelDesc": "Cancel {{guest}}'s reservation (Room {{room}})?",
     "toastCancelled": "Reservation cancelled",
     "noReservations": "No reservations found",
     "noGuests": "No guests found",

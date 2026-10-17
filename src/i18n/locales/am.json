@@ -1272,7 +1272,7 @@
     "toastBulkNoneEligible": "ከተመረጡት ቀጠሮዎች ምንም ብቁ አይደለም።",
     "btnCancel": "ይቅር",
     "btnToggleSecondGuest": "ሁለተኛ እንግዳ",
-    "confirmCancelDesc": "ለ {{guest}} በክፍል {{room}} ያለውን ቀጠሮ መሰረዝ ይፈልጋሉ?"
+    "confirmCancelDesc": "የ {{guest}} ሪዘርቬሽን (ክፍል {{room}}) ይሰረዝ?"
   },
   "operations": {
     "title": "ተግባራት",
@@ -3190,7 +3190,7 @@
     "statusCompleted": "ወቷል",
     "statusCancelled": "ተሰርዟል",
     "btnCancel": "ሰርዝ",
-    "confirmCancelDesc": "ለ {{guest}} (ክፍል {{room}}) ሪዘርቬሽን ይሰረዝ?",
+    "confirmCancelDesc": "የ {{guest}} ሪዘርቬሽን (ክፍል {{room}}) ይሰረዝ?",
     "toastCancelled": "ሪዘርቬሽን ተሰርዟል",
     "noRooms": "ክፍሎች አልተገኙም",
     "noReservations": "ምንም ቦታ ማስያዣ አልተገኘም",

@@ -822,7 +822,7 @@ export default function GroupBookingsPage() {
   };
 
   const handleResCancel = async (resId: string) => {
-    if (!confirm(t("confirmCancelReservation", { defaultValue: "Cancel this reservation? This cannot be undone." }))) return;
+    if (!confirm(t("confirmCancelReservation", { defaultValue: "Cancel this reservation?" }))) return;
     try {
       setActionLoading(resId);
       await apiCancelReservation(resId);
