@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAuthContext, AuthError } from "@/lib/tenant";
 import { checkWritePermission } from "@/lib/tenant";
+import { ensureNewTables } from "@/lib/ensure-tables";
 
 export const dynamic = "force-dynamic";
 
@@ -97,35 +98,66 @@ export function parseOwnerFeatureFlags(raw: string | null | undefined): Record<O
  *
  * Also returns the ownerFeatureFlags map (visible to all roles) so the
  * frontend can conditionally render features based on which flags are on.
+ *
+ * This route is defensive about the new `operatorFeatureFlags` column:
+ *   - If the Prisma client doesn't know about the column yet (older build),
+ *     we fall back to all-defaults.
+ *   - If the production DB hasn't run the ALTER TABLE yet, the same.
+ *   - If config is null (no row in PoliceAlertConfig yet), the same.
+ * This ensures the API never 500s during the deploy window — the
+ * Operator Features page just shows all flags as ON by default.
  */
 export async function GET(req: NextRequest) {
   try {
+    // Run idempotent migrations (adds operatorFeatureFlags column if missing).
+    // This is fire-and-forget — we don't await it because the defensive
+    // fallback below handles the case where the column isn't there yet.
+    try { await ensureNewTables(); } catch { /* non-blocking */ }
     const auth = await getAuthContext(req);
     if (auth.role !== "SUPERUSER" && auth.role !== "OPERATOR" && auth.role !== "STAFF") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    const config = await db.policeAlertConfig.findFirst();
+    // Defensive: wrap the findFirst in try/catch — if the table doesn't
+    // exist yet (very first deploy before init-db runs), return defaults
+    // instead of 500ing.
+    let config: { disabledOperatorPages?: string; operatorFeatureFlags?: string } | null = null;
+    try {
+      config = await db.policeAlertConfig.findFirst();
+    } catch (findErr) {
+      console.warn("[operator-features] PoliceAlertConfig.findFirst failed — returning defaults. Error:", findErr instanceof Error ? findErr.message : findErr);
+      config = null;
+    }
+
     let disabledPages: string[] = [];
     try {
-      disabledPages = config?.disabledOperatorPages
-        ? JSON.parse(config.disabledOperatorPages)
-        : [];
+      // config?.disabledOperatorPages is a JSON string like '["reports"]'
+      // It's a primitive string, not undefined, even on older Prisma builds
+      // (the column was added long ago). But we still guard with optional
+      // chaining just in case config itself is null.
+      const rawDisabled = config?.disabledOperatorPages;
+      disabledPages = rawDisabled ? JSON.parse(rawDisabled) : [];
     } catch {
       disabledPages = [];
     }
 
     // Filter out any page keys that are no longer in TOGGLABLE_PAGES
-    // (e.g. 'users' was removed from the togglable list but might still
-    // be in the stored config from a previous version). This ensures
-    // the owner always sees Account Management even if it was disabled
-    // before the key was removed.
     const validKeys = new Set(TOGGLABLE_PAGES.map((p) => p.key));
     disabledPages = disabledPages.filter((k) => validKeys.has(k));
 
-    // Parse the owner feature flags — visible to all roles so the
-    // operator/staff frontend can hide/show features accordingly.
-    const ownerFeatureFlags = parseOwnerFeatureFlags(config?.operatorFeatureFlags);
+    // Parse the owner feature flags — defensive about the new column.
+    // If the column doesn't exist on the DB yet, or Prisma client doesn't
+    // know about it, fall back to all-true defaults so the page loads
+    // instead of erroring.
+    let rawFlags: string | null | undefined = undefined;
+    try {
+      // Access via index to avoid TypeScript errors if the Prisma client
+      // type doesn't include the new field yet (older build).
+      rawFlags = (config as unknown as Record<string, unknown> | null)?.operatorFeatureFlags as string | null | undefined;
+    } catch {
+      rawFlags = null;
+    }
+    const ownerFeatureFlags = parseOwnerFeatureFlags(rawFlags);
 
     // OPERATOR/STAFF only get the disabled list + flags (smaller payload)
     if (auth.role !== "SUPERUSER") {
@@ -152,7 +184,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: error.statusCode });
     }
     console.error("[operator-features] GET error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    // Last-resort fallback: return a valid empty response so the frontend
+    // can render with defaults instead of showing "Failed to load" toast.
+    return NextResponse.json({
+      pages: TOGGLABLE_PAGES.map((p) => ({ ...p, enabled: true })),
+      disabledPages: [],
+      ownerFeatures: OWNER_FEATURE_FLAGS.map((f) => ({ ...f, enabled: true })),
+      ownerFeatureFlags: { ...DEFAULT_OWNER_FEATURE_FLAGS },
+      degraded: true,
+    });
   }
 }
 
@@ -164,6 +204,8 @@ export async function GET(req: NextRequest) {
  */
 export async function PUT(req: NextRequest) {
   try {
+    // Run idempotent migrations first (adds operatorFeatureFlags column if missing).
+    try { await ensureNewTables(); } catch { /* non-blocking */ }
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { allowSuperuser: true });
 
@@ -224,6 +266,12 @@ export async function PUT(req: NextRequest) {
     }
 
     // ── Upsert the PoliceAlertConfig row ──
+    // Defensive: if Prisma's generated client doesn't yet know about the
+    // operatorFeatureFlags column (older build deployed before this commit),
+    // the update will throw a PrismaClientValidationError. We catch that
+    // and retry without the new column — so at least disabledPages still
+    // saves correctly. The flags just won't persist until the new Prisma
+    // client is deployed (next build).
     const data: Record<string, string> = {};
     if (Array.isArray(disabledPages)) {
       data.disabledOperatorPages = JSON.stringify(disabledPages);
@@ -233,13 +281,42 @@ export async function PUT(req: NextRequest) {
     }
 
     const existing = await db.policeAlertConfig.findFirst();
-    if (existing) {
-      await db.policeAlertConfig.update({
-        where: { id: existing.id },
-        data,
-      });
-    } else {
-      await db.policeAlertConfig.create({ data });
+    try {
+      if (existing) {
+        await db.policeAlertConfig.update({
+          where: { id: existing.id },
+          data,
+        });
+      } else {
+        await db.policeAlertConfig.create({ data });
+      }
+    } catch (upsertErr) {
+      const msg = upsertErr instanceof Error ? upsertErr.message : String(upsertErr);
+      // If the error is about the operatorFeatureFlags column (Prisma
+      // validation or DB column missing), retry with just disabledPages.
+      if (msg.includes("operatorFeatureFlags") || msg.includes("Unknown argument") || msg.includes("does not exist")) {
+        console.warn("[operator-features] PUT: operatorFeatureFlags column not yet available — retrying with disabledPages only.");
+        const fallbackData: Record<string, string> = {};
+        if (data.disabledOperatorPages) fallbackData.disabledOperatorPages = data.disabledOperatorPages;
+        if (existing) {
+          if (Object.keys(fallbackData).length > 0) {
+            await db.policeAlertConfig.update({ where: { id: existing.id }, data: fallbackData });
+          }
+        } else {
+          if (Object.keys(fallbackData).length > 0) {
+            await db.policeAlertConfig.create({ data: fallbackData });
+          }
+        }
+        // Return success but signal that flags weren't persisted.
+        return NextResponse.json({
+          success: true,
+          disabledPages: Array.isArray(disabledPages) ? disabledPages : undefined,
+          ownerFeatureFlags: validatedFlags,
+          flagsPersisted: false,
+          warning: "Feature flags could not be persisted — the operatorFeatureFlags column is not yet available. A redeploy will fix this.",
+        });
+      }
+      throw upsertErr;
     }
 
     return NextResponse.json({
