@@ -142,7 +142,12 @@ export async function PUT(
     // Keep room.status consistent when a reservation moves rooms, mirroring
     // the cancel (release) and check-in (occupy) semantics:
     //   • old room → AVAILABLE once no other UPCOMING/ACTIVE booking holds it
-    //   • new room → OCCUPIED when an ACTIVE (checked-in) guest moves in
+    //   • new room → OCCUPIED when an ACTIVE (checked-in) guest moves in,
+    //                RESERVED when an UPCOMING (not yet checked in) guest moves in.
+    //                This is the fix for the bug where shifting an UPCOMING
+    //                reservation from Room A → Room B left Room B in AVAILABLE
+    //                status (it should be RESERVED so it appears in the
+    //                reserved-rooms list and can't be double-booked).
     const roomChanged =
       roomId !== undefined && roomId !== null && roomId !== existing.roomId;
     if (roomChanged) {
@@ -162,15 +167,27 @@ export async function PUT(
           data: { status: "AVAILABLE" },
         });
       }
-      if (existing.status === "ACTIVE") {
+      // Determine the correct target status for the new room based on the
+      // reservation's current status. ACTIVE → OCCUPIED (guest is in-house),
+      // UPCOMING → RESERVED (guest will arrive later). Other statuses
+      // (COMPLETED/CANCELLED/DELETED) shouldn't normally be shifted, but if
+      // they are, leave the new room alone (it's a historical record change).
+      const targetRoomStatus =
+        existing.status === "ACTIVE" ? "OCCUPIED"
+        : existing.status === "UPCOMING" ? "RESERVED"
+        : null;
+      if (targetRoomStatus) {
         const newRoom = await db.room.findUnique({
           where: { id: roomId },
           select: { id: true, number: true, name: true, pricePerNight: true, floor: true, capacity: true, status: true, providerId: true },
         });
+        // Only update if the new room is currently AVAILABLE or RESERVED —
+        // don't downgrade an OCCUPIED or MAINTENANCE room (those need
+        // operator attention first).
         if (newRoom && (newRoom.status === "AVAILABLE" || newRoom.status === "RESERVED")) {
           await db.room.update({ select: { id: true, number: true, status: true, providerId: true },
             where: { id: roomId },
-            data: { status: "OCCUPIED" },
+            data: { status: targetRoomStatus },
           });
         }
       }

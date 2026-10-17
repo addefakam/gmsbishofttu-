@@ -581,12 +581,17 @@ export default function RoomsPage() {
     }
     try {
       setShifting(true);
-      // Update reservation to the new room
+      // Update reservation to the new room.
+      // The API (PUT /api/reservations/[id]) automatically manages the
+      // room statuses correctly:
+      //   • old room → AVAILABLE (if no other UPCOMING/ACTIVE reservations hold it)
+      //   • new room → RESERVED if the reservation is UPCOMING
+      //                OCCUPIED if the reservation is ACTIVE
+      // Previously the client was hardcoding the new room to "OCCUPIED"
+      // which was wrong for UPCOMING reservations — the room ended up
+      // OCCUPIED instead of RESERVED, so it didn't appear in the
+      // reserved-rooms filter list.
       await apiUpdateReservation(shiftDialog.id, { roomId: shiftTargetRoomId });
-      // Free the old room
-      await apiUpdateRoomStatus(infoRoom.id, "AVAILABLE");
-      // Occupy the new room
-      await apiUpdateRoomStatus(shiftTargetRoomId, "OCCUPIED");
       toast.success(t("toastGuestShifted"));
       setShiftDialog(null);
       setShiftTargetRoomId("");
