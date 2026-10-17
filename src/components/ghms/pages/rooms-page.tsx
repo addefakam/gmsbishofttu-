@@ -137,6 +137,38 @@ interface RoomReservation {
   paymentStatus: string;
   guest: { id: string; name: string; phone: string } | null;
   roomId?: string;
+  // Group booking info — populated by GET /api/reservations via LEFT JOIN
+  // to GroupBooking. Used by getRoomResDisplayName() to swap placeholder
+  // "Guest 1", "Guest 2", ... names for the group/organization name.
+  groupBookingId?: string | null;
+  groupBookingName?: string | null;
+}
+
+// ── Display name helper for the Room Info dialog ──
+// When a group booking is created via Quick Group Setup, each reservation
+// gets a placeholder Guest record ("Guest 1", "Guest 2", ...). In the Room
+// Info dialog we prefer to show the group/organization name (e.g. "Bishoftu
+// Police Training Cohort 12") as a subtitle under the guest name, so the
+// operator knows which organization the guest belongs to.
+//
+// Rules:
+//   1. If the reservation has no groupBookingName → no subtitle
+//   2. If guest.name matches the placeholder pattern /^Guest \d+$/ → show
+//      groupBookingName as PRIMARY, with the placeholder as subtitle
+//   3. If guest.name is a real name (not a placeholder) → show guest.name
+//      as primary, with groupBookingName as a small subtitle (org context)
+const PLACEHOLDER_GUEST_RE = /^Guest\s+\d+$/;
+
+function getRoomResDisplayName(res: RoomReservation): { primary: string; subtitle?: string } {
+  const guestName = res.guest?.name || "";
+  const groupName = res.groupBookingName || "";
+  if (!groupName) {
+    return { primary: guestName || "—" };
+  }
+  if (PLACEHOLDER_GUEST_RE.test(guestName)) {
+    return { primary: groupName, subtitle: guestName };
+  }
+  return { primary: guestName || "—", subtitle: groupName };
 }
 
 const ROOM_TYPES = ["SINGLE", "DOUBLE", "TWIN", "SUITE", "DELUXE", "KING", "STANDARD", "STANDARD_SUITE", "JUNIOR_SUITE", "EXECUTIVE_SUITE", "PRESIDENTIAL_SUITE"] as const;
@@ -1675,8 +1707,21 @@ export default function RoomsPage() {
                             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
                               <User className="h-5 w-5 text-emerald-700" />
                             </div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">{activeRes.guest.name}</p>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-900">
+                                {(() => {
+                                  const dn = getRoomResDisplayName(activeRes);
+                                  return dn.primary;
+                                })()}
+                              </p>
+                              {(() => {
+                                const dn = getRoomResDisplayName(activeRes);
+                                return dn.subtitle ? (
+                                  <p className="text-[10px] text-emerald-700/80 truncate">
+                                    {dn.subtitle}
+                                  </p>
+                                ) : null;
+                              })()}
                               <p className="text-xs text-gray-500 flex items-center gap-1">
                                 <Clock className="h-3 w-3" /> {activeRes.guest.phone}
                               </p>
@@ -1763,8 +1808,21 @@ export default function RoomsPage() {
                             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-100">
                               <User className="h-5 w-5 text-sky-700" />
                             </div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">{upcomingRes[0].guest.name}</p>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-900">
+                                {(() => {
+                                  const dn = getRoomResDisplayName(upcomingRes[0]);
+                                  return dn.primary;
+                                })()}
+                              </p>
+                              {(() => {
+                                const dn = getRoomResDisplayName(upcomingRes[0]);
+                                return dn.subtitle ? (
+                                  <p className="text-[10px] text-sky-700/80 truncate">
+                                    {dn.subtitle}
+                                  </p>
+                                ) : null;
+                              })()}
                               <p className="text-xs text-gray-500 flex items-center gap-1">
                                 <Clock className="h-3 w-3" /> {upcomingRes[0].guest.phone}
                               </p>
@@ -1816,14 +1874,20 @@ export default function RoomsPage() {
                       {upcomingRes.length > 0 && (
                         <div className="mt-2 space-y-1.5">
                           <p className="text-xs text-emerald-600 font-medium">{t("infoUpcomingReservations")}</p>
-                          {upcomingRes.slice(0, 3).map((res) => (
-                            <div key={res.id} className="flex items-center justify-between rounded-md bg-emerald-100 px-2.5 py-1.5 text-xs">
-                              <span className="text-gray-700">
-                                {res.guest?.name || t("guestFallback")} · {formatDate(res.checkIn)} → {formatDate(res.checkOut)}
-                              </span>
-                              <span className="text-emerald-600 font-medium">{t("inDaysShort", { days: Math.max(0, daysUntil(res.checkIn)) })}</span>
-                            </div>
-                          ))}
+                          {upcomingRes.slice(0, 3).map((res) => {
+                            const dn = getRoomResDisplayName(res);
+                            return (
+                              <div key={res.id} className="flex items-center justify-between rounded-md bg-emerald-100 px-2.5 py-1.5 text-xs">
+                                <div className="min-w-0">
+                                  <span className="text-gray-700">{dn.primary} · {formatDate(res.checkIn)} → {formatDate(res.checkOut)}</span>
+                                  {dn.subtitle && (
+                                    <span className="block text-[9px] text-emerald-700/70 truncate">{dn.subtitle}</span>
+                                  )}
+                                </div>
+                                <span className="text-emerald-600 font-medium">{t("inDaysShort", { days: Math.max(0, daysUntil(res.checkIn)) })}</span>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
