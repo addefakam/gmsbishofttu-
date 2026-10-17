@@ -175,15 +175,35 @@ export default function OperatorFeaturesPage() {
     setSaving(true);
     try {
       const disabledPages = pages.filter((p) => !p.enabled).map((p) => p.key);
-      await apiUpdateOperatorFeatures(disabledPages);
-      setHasChanges(false);
-      // ── Refresh the global store so the sidebar updates immediately ──
-      // Without this, the sidebar keeps using the stale disabledPages
-      // from before the save — the user would have to refresh the page
-      // to see Expenses/Stock/Messages disappear from the sidebar.
-      setDisabledPages(disabledPages);
-      toast.success(t("saved"));
-    } catch {
+      const result = await apiUpdateOperatorFeatures(disabledPages) as { success?: boolean; flagsPersisted?: boolean; warning?: string } | undefined;
+      // Check if the save actually persisted (defensive PUT returns 200
+      // with success:false if the column isn't available yet).
+      if (result && result.success === false) {
+        toast.error(
+          result.warning
+            || t("errorSave")
+        );
+        // Don't update the store — sidebar would show items as hidden
+        // but they're not actually persisted to the DB.
+        setHasChanges(true);
+      } else if (result && result.flagsPersisted === false) {
+        // Save succeeded but flags didn't persist — show warning but
+        // still update the store since disabledPages DID persist.
+        setHasChanges(false);
+        setDisabledPages(disabledPages);
+        toast.warning(
+          result.warning
+            || t("flagNotPersisted", { defaultValue: "Page visibility saved. Feature flags could not be persisted — please try again later." })
+        );
+      } else {
+        // Full success — persist to store + close the dirty state.
+        setHasChanges(false);
+        setDisabledPages(disabledPages);
+        toast.success(t("saved"));
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("Session expired") || msg.includes("Please sign in")) return;
       toast.error(t("errorSave"));
     } finally {
       setSaving(false);

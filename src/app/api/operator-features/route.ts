@@ -12,22 +12,26 @@ export const dynamic = "force-dynamic";
  * — which can skip migrations on Vercel warm serverless instances that ran
  * ensureDatabase() before the new migration was deployed.
  *
- * Uses Prisma's $executeRawUnsafe with a DO $$ BEGIN ... EXCEPTION WHEN
- * duplicate_column ... END $$ block — idempotent + safe to run on every
- * PUT request.
+ * IMPORTANT: Prisma's $executeRawUnsafe does NOT support DO $$ ... END $$
+ * blocks (it throws a syntax error). So we use a plain ALTER TABLE statement
+ * wrapped in try/catch — duplicate_column errors are silently ignored.
  */
 async function ensureOperatorFeatureFlagsColumn(): Promise<void> {
   try {
-    await db.$executeRawUnsafe(`
-      DO $$ BEGIN
-        ALTER TABLE "PoliceAlertConfig" ADD COLUMN "operatorFeatureFlags" TEXT NOT NULL DEFAULT '{"ownerDashboard":true,"endOfDayReport":true,"shiftHandover":true,"maintenanceTickets":true}';
-      EXCEPTION WHEN duplicate_column THEN null;
-      END $$
-    `);
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "PoliceAlertConfig" ADD COLUMN "operatorFeatureFlags" TEXT NOT NULL DEFAULT '{"ownerDashboard":true,"endOfDayReport":true,"shiftHandover":true,"maintenanceTickets":true}'`
+    );
+    console.log("[operator-features] operatorFeatureFlags column added to PoliceAlertConfig.");
   } catch (err) {
-    // Non-blocking — the PUT handler's fallback logic handles missing
-    // columns gracefully. Just log the error so we can debug.
-    console.warn("[operator-features] ensureOperatorFeatureFlagsColumn: ALTER TABLE failed (non-blocking):", err instanceof Error ? err.message : err);
+    const msg = err instanceof Error ? err.message : String(err);
+    // Ignore "duplicate column" errors — the column already exists.
+    if (msg.includes("already exists") || msg.includes("duplicate column") || msg.includes("42701")) {
+      // Expected — column is already there.
+      return;
+    }
+    // Other errors are non-blocking — the PUT handler's fallback logic
+    // handles missing columns gracefully. Just log so we can debug.
+    console.warn("[operator-features] ensureOperatorFeatureFlagsColumn: ALTER TABLE failed (non-blocking):", msg);
   }
 }
 
