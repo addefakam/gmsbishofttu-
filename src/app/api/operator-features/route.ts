@@ -35,6 +35,26 @@ async function ensureOperatorFeatureFlagsColumn(): Promise<void> {
   }
 }
 
+/**
+ * Force-adds the disabledOperatorPages column to PoliceAlertConfig if it
+ * doesn't exist yet. Same pattern as ensureOperatorFeatureFlagsColumn —
+ * bypasses _initDone cache.
+ */
+async function ensureDisabledOperatorPagesColumn(): Promise<void> {
+  try {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "PoliceAlertConfig" ADD COLUMN "disabledOperatorPages" TEXT NOT NULL DEFAULT '[]'`
+    );
+    console.log("[operator-features] disabledOperatorPages column added to PoliceAlertConfig.");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("already exists") || msg.includes("duplicate column") || msg.includes("42701")) {
+      return;
+    }
+    console.warn("[operator-features] ensureDisabledOperatorPagesColumn: ALTER TABLE failed (non-blocking):", msg);
+  }
+}
+
 // All page keys that can be toggled for OPERATOR/STAFF
 // NOTE: 'users' (Account Management) is intentionally NOT in this list —
 // the owner must always be able to manage their staff accounts. Removing
@@ -138,9 +158,10 @@ export function parseOwnerFeatureFlags(raw: string | null | undefined): Record<O
  */
 export async function GET(req: NextRequest) {
   try {
-    // Force-add the operatorFeatureFlags column BEFORE we try to SELECT it.
+    // Force-add the columns BEFORE we try to SELECT them.
     // This bypasses the _initDone cache in ensureDatabase() which can skip
     // new migrations on Vercel warm instances.
+    await ensureDisabledOperatorPagesColumn();
     await ensureOperatorFeatureFlagsColumn();
     const auth = await getAuthContext(req);
     if (auth.role !== "SUPERUSER" && auth.role !== "OPERATOR" && auth.role !== "STAFF") {
@@ -165,6 +186,7 @@ export async function GET(req: NextRequest) {
       // (the column was added long ago). But we still guard with optional
       // chaining just in case config itself is null.
       const rawDisabled = config?.disabledOperatorPages;
+      console.log("[operator-features] GET raw disabledOperatorPages:", rawDisabled);
       disabledPages = rawDisabled ? JSON.parse(rawDisabled) : [];
     } catch {
       disabledPages = [];
@@ -173,6 +195,8 @@ export async function GET(req: NextRequest) {
     // Filter out any page keys that are no longer in TOGGLABLE_PAGES
     const validKeys = new Set(TOGGLABLE_PAGES.map((p) => p.key));
     disabledPages = disabledPages.filter((k) => validKeys.has(k));
+
+    console.log("[operator-features] GET final disabledPages:", JSON.stringify(disabledPages));
 
     // Parse the owner feature flags — defensive about the new column.
     // If the column doesn't exist on the DB yet, or Prisma client doesn't
@@ -233,9 +257,10 @@ export async function GET(req: NextRequest) {
  */
 export async function PUT(req: NextRequest) {
   try {
-    // Force-add the operatorFeatureFlags column BEFORE we try to update it.
+    // Force-add the columns BEFORE we try to UPDATE them.
     // This bypasses the _initDone cache in ensureDatabase() which can skip
     // new migrations on Vercel warm instances.
+    await ensureDisabledOperatorPagesColumn();
     await ensureOperatorFeatureFlagsColumn();
     // Also run the full migration suite (fire-and-forget) for any other
     // new columns/tables that might also be missing.
@@ -248,6 +273,8 @@ export async function PUT(req: NextRequest) {
       disabledPages?: string[];
       ownerFeatureFlags?: Record<string, boolean>;
     };
+
+    console.log("[operator-features] PUT body:", JSON.stringify({ disabledPages, ownerFeatureFlags }));
 
     // ── Validate disabledPages (if present) ──
     if (disabledPages !== undefined && !Array.isArray(disabledPages)) {
@@ -318,14 +345,18 @@ export async function PUT(req: NextRequest) {
     let flagsPersisted = true;
     let warning: string | undefined;
 
+    console.log("[operator-features] PUT existing config:", existing ? `id=${existing.id}` : "null", "data:", JSON.stringify(data));
+
     try {
       if (existing) {
         await db.policeAlertConfig.update({
           where: { id: existing.id },
           data,
         });
+        console.log("[operator-features] PUT: update succeeded. disabledPages now persisted.");
       } else {
         await db.policeAlertConfig.create({ data });
+        console.log("[operator-features] PUT: create succeeded. disabledPages now persisted.");
       }
     } catch (upsertErr) {
       const msg = upsertErr instanceof Error ? upsertErr.message : String(upsertErr);
