@@ -80,7 +80,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function OperatorFeaturesPage() {
   const { t } = useTranslation("operatorFeatures");
-  const { refreshKey, setOwnerFeatureFlags } = useAppStore();
+  const { refreshKey, setOwnerFeatureFlags, setDisabledPages } = useAppStore();
   const [pages, setPages] = useState<FeaturePage[]>([]);
   const [ownerFeatures, setOwnerFeatures] = useState<OwnerFeature[]>([]);
   const [loading, setLoading] = useState(true);
@@ -177,6 +177,11 @@ export default function OperatorFeaturesPage() {
       const disabledPages = pages.filter((p) => !p.enabled).map((p) => p.key);
       await apiUpdateOperatorFeatures(disabledPages);
       setHasChanges(false);
+      // ── Refresh the global store so the sidebar updates immediately ──
+      // Without this, the sidebar keeps using the stale disabledPages
+      // from before the save — the user would have to refresh the page
+      // to see Expenses/Stock/Messages disappear from the sidebar.
+      setDisabledPages(disabledPages);
       toast.success(t("saved"));
     } catch {
       toast.error(t("errorSave"));
