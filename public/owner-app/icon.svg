@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="36" fill="url(#bg)"/>
+  <!-- Trending up icon (owner = revenue / growth) -->
+  <g fill="none" stroke="white" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" transform="translate(40,52)">
+    <polyline points="0,52 32,28 56,40 100,0"/>
+    <polyline points="72,0 100,0 100,28"/>
+  </g>
+</svg>

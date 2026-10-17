@@ -99,6 +99,11 @@ interface NavItem {
 // ── All available navigation items ──
 const ALL_NAV_ITEMS: NavItem[] = [
   { page: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  // Owner Overview — consolidated view of KPIs + alerts + EoD + shift + tickets.
+  // Only visible to SUPERUSER-with-providerId (owners). Falls back gracefully
+  // (item not shown) for staff/operators who don't have ownerFeatureFlags
+  // fully enabled.
+  { page: "owner-overview", label: "Owner Overview", icon: TrendingUp },
   {
     page: "accommodation",
     label: "Accommodation",
@@ -272,6 +277,15 @@ function getNavItems(
   const maintenanceTicketsEnabled = ownerFeatureFlags == null || ownerFeatureFlags.maintenanceTickets !== false;
 
   const operatorItems: NavItem[] = [...ALL_NAV_ITEMS];
+  // Owner Overview page is only for SUPERUSER-with-providerId (owners).
+  // OPERATOR + STAFF don't see it (they're not the business owner).
+  // We filter it out here for non-owner roles — the item remains in
+  // ALL_NAV_ITEMS but never reaches the sidebar render for operators.
+  if (user.role !== "SUPERUSER" || !user.providerId) {
+    // Remove the owner-overview item for non-owners
+    const idx = operatorItems.findIndex((i) => i.page === "owner-overview");
+    if (idx >= 0) operatorItems.splice(idx, 1);
+  }
   if (ownerEodEnabled) operatorItems.push(OWNER_EOD_NAV);
   if (shiftHandoverEnabled) operatorItems.push(SHIFT_HANDOVER_NAV);
   if (maintenanceTicketsEnabled) operatorItems.push(MAINTENANCE_TICKETS_NAV);

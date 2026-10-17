@@ -1,0 +1,18 @@
+{
+  "name": "Bishoftu GMS — Owner",
+  "short_name": "Owner",
+  "description": "Owner companion app — real-time KPIs, alerts, end-of-day report, shift + maintenance overview",
+  "start_url": "/owner",
+  "display": "standalone",
+  "background_color": "#F6F7FB",
+  "theme_color": "#4F46E5",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/owner-app/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
