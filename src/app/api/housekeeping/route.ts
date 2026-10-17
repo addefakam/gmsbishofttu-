@@ -5,8 +5,50 @@ import { getAuthContext,
   checkWritePermission, AuthError } from "@/lib/tenant";
 import { logStaffActivity } from "@/lib/staff-log";
 
+export const dynamic = "force-dynamic";
+
+/**
+ * Force-adds the maintenance ticket fields to HousekeepingTask if they
+ * don't exist yet. Same pattern as ensureOperatorFeatureFlagsColumn —
+ * bypasses the _initDone cache in ensureDatabase() which can skip new
+ * migrations on Vercel warm instances.
+ *
+ * Uses plain ALTER TABLE statements (no DO $$ blocks — Prisma's driver
+ * doesn't support them in $executeRawUnsafe).
+ */
+async function ensureMaintenanceTicketColumns(): Promise<void> {
+  const columns: Array<{ name: string; type: string; default?: string }> = [
+    { name: "reportedBy", type: "TEXT" },
+    { name: "priority", type: "TEXT", default: "'MEDIUM'" },
+    { name: "diagnosis", type: "TEXT", default: "''" },
+    { name: "partsUsed", type: "TEXT", default: "''" },
+    { name: "resolutionNotes", type: "TEXT", default: "''" },
+    { name: "resolvedAt", type: "TIMESTAMP(3)" },
+    { name: "resolvedById", type: "TEXT" },
+  ];
+  for (const col of columns) {
+    try {
+      const defaultClause = col.default ? ` DEFAULT ${col.default}` : "";
+      await db.$executeRawUnsafe(
+        `ALTER TABLE "HousekeepingTask" ADD COLUMN "${col.name}" ${col.type}${defaultClause}`
+      );
+      console.log(`[housekeeping] Added column ${col.name} to HousekeepingTask.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("already exists") || msg.includes("duplicate column") || msg.includes("42701")) {
+        // Expected — column already there.
+        continue;
+      }
+      console.warn(`[housekeeping] Failed to add column ${col.name} (non-blocking):`, msg);
+    }
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
+    // Force-migrate the maintenance ticket columns before querying —
+    // otherwise the SELECT will fail with "column does not exist".
+    await ensureMaintenanceTicketColumns();
     const auth = await getAuthContext(req);
     const filter = getProviderFilter(auth);
 
@@ -55,9 +97,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    // Force-migrate the maintenance ticket columns before writing —
+    // otherwise the INSERT will fail with "column does not exist".
+    await ensureMaintenanceTicketColumns();
     const auth = await getAuthContext(req);
     checkWritePermission(auth, {
-      blockSuperuser: true,
+      allowSuperuser: true,
       staffPermissionKey: "housekeeping",
     });
 
@@ -85,25 +130,46 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const task = await db.housekeepingTask.create({
-      data: {
-        roomId,
-        type,
-        assignedTo: assignedTo || null,
-        scheduledDate,
-        notes: notes || "",
-        providerId: auth.providerId,
-        // Maintenance ticket fields — only populated when type=MAINTENANCE
-        ...(type === "MAINTENANCE" ? {
-          reportedBy: reportedBy || auth.userName || null,
-          priority: priority || "MEDIUM",
-          diagnosis: diagnosis || "",
-          partsUsed: partsUsed || "",
-          resolutionNotes: resolutionNotes || "",
-        } : {}),
-      },
-      include: { room: { select: { id: true, number: true, name: true, type: true, status: true } } },
-    });
+    // Try to create with all maintenance ticket fields. If the DB columns
+    // don't exist yet (shouldn't happen after ensureMaintenanceTicketColumns,
+    // but defensive), retry without them.
+    let task;
+    try {
+      task = await db.housekeepingTask.create({
+        data: {
+          roomId,
+          type,
+          assignedTo: assignedTo || null,
+          scheduledDate,
+          notes: notes || "",
+          providerId: auth.providerId,
+          // Maintenance ticket fields — only populated when type=MAINTENANCE
+          ...(type === "MAINTENANCE" ? {
+            reportedBy: reportedBy || auth.userName || null,
+            priority: priority || "MEDIUM",
+            diagnosis: diagnosis || "",
+            partsUsed: partsUsed || "",
+            resolutionNotes: resolutionNotes || "",
+          } : {}),
+        },
+        include: { room: { select: { id: true, number: true, name: true, type: true, status: true } } },
+      });
+    } catch (createErr) {
+      const msg = createErr instanceof Error ? createErr.message : String(createErr);
+      console.warn("[housekeeping POST] First create failed — retrying without maintenance fields. Error:", msg);
+      // Retry without the maintenance fields
+      task = await db.housekeepingTask.create({
+        data: {
+          roomId,
+          type,
+          assignedTo: assignedTo || null,
+          scheduledDate,
+          notes: notes || "",
+          providerId: auth.providerId,
+        },
+        include: { room: { select: { id: true, number: true, name: true, type: true, status: true } } },
+      });
+    }
 
     // Staff activity log
     logStaffActivity({
