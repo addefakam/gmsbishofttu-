@@ -545,6 +545,15 @@ DO $$ BEGIN
   ALTER TABLE "PoliceAlertConfig" ADD COLUMN "disabledOperatorPages" TEXT NOT NULL DEFAULT '[]';
 EXCEPTION WHEN duplicate_column THEN null;
 END $$;
+-- Owner Visibility & Operational Control feature flags.
+-- Stored as a JSON string on PoliceAlertConfig so the system admin can
+-- toggle each feature on/off per deployment from the Operator Features page.
+-- All flags default to ENABLED (true) so existing deployments get the new
+-- features without manual opt-in; admins can disable any of them.
+DO $$ BEGIN
+  ALTER TABLE "PoliceAlertConfig" ADD COLUMN "operatorFeatureFlags" TEXT NOT NULL DEFAULT '{"ownerDashboard":true,"endOfDayReport":true,"shiftHandover":true,"maintenanceTickets":true}';
+EXCEPTION WHEN duplicate_column THEN null;
+END $$;
 CREATE TABLE IF NOT EXISTS "GroupBooking" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "name" TEXT NOT NULL,

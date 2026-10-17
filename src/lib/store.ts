@@ -92,6 +92,12 @@ interface AppState {
   // Operator features: pages disabled by SUPERUSER (global). null = not yet loaded.
   disabledPages: string[] | null;
   setDisabledPages: (pages: string[]) => void;
+  // Owner Visibility & Operational Control feature flags.
+  // Each flag controls whether the corresponding feature is rendered in the UI.
+  // null = not yet loaded; once loaded, all 4 keys are guaranteed present
+  // (defaults filled in by the backend).
+  ownerFeatureFlags: Record<string, boolean> | null;
+  setOwnerFeatureFlags: (flags: Record<string, boolean>) => void;
 }
 
 // ── localStorage helpers (SSR-safe) ──
@@ -193,4 +199,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Operator features (null = not yet fetched from server)
   disabledPages: null,
   setDisabledPages: (pages) => set({ disabledPages: pages }),
+  ownerFeatureFlags: null,
+  setOwnerFeatureFlags: (flags) => set({ ownerFeatureFlags: flags }),
 }));

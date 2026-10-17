@@ -49,7 +49,7 @@ import { useAppStore, type CurrentUser } from "@/lib/store";
 import { formatDaysRemaining, formatCycle } from "@/lib/subscription";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { POLICE_RANK_PERMISSIONS, RANK_BADGE_CLASSES, type PoliceRank } from "@/lib/police-permissions";
-import { apiLogout, apiGetDisabledPages } from "@/lib/api";
+import { apiLogout, apiGetDisabledPages, apiGetOwnerFeatureFlags } from "@/lib/api";
 import LanguageSwitcher from "@/components/ghms/language-switcher";
 
 import { Button } from "@/components/ui/button";
@@ -963,7 +963,7 @@ function SidebarContent({
 // ── Main Sidebar Component ──
 export default function Sidebar() {
   const { t } = useTranslation("sidebar");
-  const { currentUser, currentPage, setCurrentPage, setCurrentUser, sidebarOpen, setSidebarOpen, setDisabledPages } =
+  const { currentUser, currentPage, setCurrentPage, setCurrentUser, sidebarOpen, setSidebarOpen, setDisabledPages, setOwnerFeatureFlags } =
     useAppStore();
   const isMobile = useIsMobile();
   const mounted = useSyncExternalStore(
@@ -972,7 +972,8 @@ export default function Sidebar() {
     () => false,
   );
 
-  // Fetch disabled operator pages for OPERATOR/STAFF/SUPERUSER(with providerId)
+  // Fetch disabled operator pages + owner feature flags for OPERATOR/STAFF/SUPERUSER(with providerId).
+  // Both come from the same /api/operator-features endpoint — fetched in parallel.
   React.useEffect(() => {
     if (!mounted || !currentUser) return;
     const role = currentUser.role;
@@ -983,7 +984,14 @@ export default function Sidebar() {
     // Skip if already loaded (null = not yet fetched)
     if (useAppStore.getState().disabledPages !== null) return;
     apiGetDisabledPages().then((pages) => setDisabledPages(pages)).catch(() => setDisabledPages([]));
-  }, [mounted, currentUser, setDisabledPages]);
+    // Also fetch the owner feature flags (ownerDashboard, endOfDayReport, etc.)
+    // so the dashboard page + other components can conditionally render features.
+    if (useAppStore.getState().ownerFeatureFlags === null) {
+      apiGetOwnerFeatureFlags()
+        .then((flags) => setOwnerFeatureFlags(flags))
+        .catch(() => setOwnerFeatureFlags({ ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true }));
+    }
+  }, [mounted, currentUser, setDisabledPages, setOwnerFeatureFlags]);
 
   if (!mounted || !currentUser) return null;
 

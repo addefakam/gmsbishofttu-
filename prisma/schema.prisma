@@ -934,6 +934,11 @@ model PoliceAlertConfig {
   criticalImmediate        Boolean  @default(true) // CRITICAL alerts are immediate
   anomalyDetectionEnabled  Boolean  @default(false) // Smart Anomaly Detection ON/OFF toggle
   disabledOperatorPages     String   @default("[]") // JSON array of page keys hidden from OPERATOR/STAFF sidebar
+  // Owner Visibility & Operational Control feature flags.
+  // JSON string: {"ownerDashboard":true,"endOfDayReport":true,"shiftHandover":true,"maintenanceTickets":true}
+  // Toggled by the system admin from the Operator Features page. When a flag is
+  // false, the corresponding feature is hidden from owners/operators.
+  operatorFeatureFlags     String   @default("{\"ownerDashboard\":true,\"endOfDayReport\":true,\"shiftHandover\":true,\"maintenanceTickets\":true}")
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 }

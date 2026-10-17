@@ -630,3 +630,23 @@ export const apiGetDisabledPages = async (): Promise<string[]> => {
     return [];
   }
 };
+
+// Owner Visibility & Operational Control feature flags.
+// Returns the full flag map { ownerDashboard, endOfDayReport, shiftHandover,
+// maintenanceTickets }. Used by the frontend to conditionally render the
+// owner dashboard enhancements, EoD report, shift handover, and maintenance
+// tickets — based on which features the system admin has enabled.
+export const apiGetOwnerFeatureFlags = async (): Promise<Record<string, boolean>> => {
+  try {
+    const res = await req("/api/operator-features");
+    if (res?.ownerFeatureFlags && typeof res.ownerFeatureFlags === "object") {
+      return res.ownerFeatureFlags as Record<string, boolean>;
+    }
+    // Default: all features enabled (matches backend DEFAULT_OWNER_FEATURE_FLAGS)
+    return { ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true };
+  } catch {
+    return { ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true };
+  }
+};
+export const apiUpdateOwnerFeatureFlags = (flags: Record<string, boolean>) =>
+  req("/api/operator-features", { method: "PUT", body: JSON.stringify({ ownerFeatureFlags: flags }) });

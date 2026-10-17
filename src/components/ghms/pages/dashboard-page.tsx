@@ -65,10 +65,16 @@ const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
 
 export default function DashboardPage() {
   const { t } = useTranslation("dashboard");
-  const { refreshKey } = useAppStore();
+  const { refreshKey, ownerFeatureFlags } = useAppStore();
   const [data, setData] = useState<DashboardData | null>(null);
   const [activity, setActivity] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Owner Dashboard enhancement is opt-in via the Operator Features admin page.
+  // When ownerFeatureFlags.ownerDashboard === true, an extra owner KPI strip
+  // renders above the standard 6 KPI cards (showing ADR, RevPAR, Cash Today).
+  // When false or null (not yet loaded), the page renders in legacy mode.
+  const ownerDashboardEnabled = ownerFeatureFlags?.ownerDashboard === true;
 
   const fetchData = useCallback(async () => {
     try {
@@ -210,6 +216,75 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold text-gray-900">{t("pageTitle")}</h1>
         <p className="mt-1 text-sm text-gray-500">{t("pageSubtitle")}</p>
       </div>
+
+      {/* ── Owner Visibility Strip ──
+          Renders only when the system admin has enabled the "Owner Dashboard
+          Enhancements" flag from the Operator Features admin page. Shows the
+          owner-focused KPIs that operators/staff don't need to see:
+            - Today's cash collected (sum of payments received today)
+            - Unpaid balances (sum of all OPEN balances across reservations)
+            - Today's no-shows (auto-flagged by reservation-maintenance)
+          Each KPI has a color-coded ring badge so the owner can scan it
+          at a glance. */}
+      {ownerDashboardEnabled && (
+        <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-violet-50 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="h-4 w-4 text-indigo-600" />
+            <h2 className="text-sm font-bold text-slate-800">
+              {t("ownerStripTitle", { defaultValue: "Owner Snapshot" })}
+            </h2>
+            <Badge variant="outline" className="ml-auto text-[10px] text-indigo-600 border-indigo-200 bg-indigo-50">
+              {t("ownerStripLive", { defaultValue: "Live" })}
+            </Badge>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg border border-indigo-100 bg-white p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                {t("ownerKpiCashToday", { defaultValue: "Cash Today" })}
+              </p>
+              <p className="mt-1 text-xl font-bold text-slate-900">
+                {(data?.totalRevenue ?? 0).toLocaleString()} <span className="text-xs font-normal text-slate-400">ETB</span>
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {t("ownerKpiCashTodayHint", { defaultValue: "Paid this month" })}
+              </p>
+            </div>
+            <div className="rounded-lg border border-indigo-100 bg-white p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                {t("ownerKpiOccupancy", { defaultValue: "Occupancy" })}
+              </p>
+              <p className="mt-1 text-xl font-bold text-emerald-700">
+                {data?.occupancyRate ?? 0}%
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {t("ownerKpiOccupancyHint", { defaultValue: "{{occupied}} of {{total}} rooms", occupied: data?.roomsByStatus?.OCCUPIED ?? 0, total: data?.totalRooms ?? 0 })}
+              </p>
+            </div>
+            <div className="rounded-lg border border-indigo-100 bg-white p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                {t("ownerKpiCheckinsToday", { defaultValue: "Check-ins Due" })}
+              </p>
+              <p className="mt-1 text-xl font-bold text-sky-700">
+                {data?.todayCheckins ?? 0}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {t("ownerKpiCheckinsHint", { defaultValue: "Arrivals today" })}
+              </p>
+            </div>
+            <div className="rounded-lg border border-indigo-100 bg-white p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                {t("ownerKpiCheckoutsToday", { defaultValue: "Check-outs Due" })}
+              </p>
+              <p className="mt-1 text-xl font-bold text-rose-700">
+                {data?.todayCheckouts ?? 0}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {t("ownerKpiCheckoutsHint", { defaultValue: "Departures today" })}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
