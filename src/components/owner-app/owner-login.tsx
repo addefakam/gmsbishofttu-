@@ -106,7 +106,7 @@ export function OwnerRoleError() {
           {t("ownerRoleError.title", { defaultValue: "Access Denied" })}
         </h1>
         <p className="mt-2 text-sm text-slate-500">
-          {t("ownerRoleError.message", { defaultValue: "This app is for guesthouse owners only. Your account doesn't have owner privileges." })}
+          {t("ownerRoleError.message", { defaultValue: "This app is for owners, operators, and system admins. Your account (STAFF or POLICE) doesn't have access." })}
         </p>
         <a href="/" className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-700">
           {t("ownerRoleError.backToMain", { defaultValue: "← Back to main app" })}

@@ -59,12 +59,12 @@ function OwnerAppGate() {
     return <OwnerLogin />;
   }
 
-  // Owner app is for SUPERUSER-with-providerId (guesthouse owners) + OPERATOR.
-  // System admins (SUPERUSER without providerId) get the role-error page.
+  // Owner app is accessible to:
+  //   - SUPERUSER (both system admin and guesthouse owner — system admin
+  //     may want to preview the owner experience)
+  //   - OPERATOR (front desk / manager)
+  // STAFF + POLICE get the role-error page.
   if (currentUser.role !== "SUPERUSER" && currentUser.role !== "OPERATOR") {
-    return <OwnerRoleError />;
-  }
-  if (currentUser.role === "SUPERUSER" && !currentUser.providerId) {
     return <OwnerRoleError />;
   }
 
