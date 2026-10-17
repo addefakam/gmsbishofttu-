@@ -650,3 +650,23 @@ export const apiGetOwnerFeatureFlags = async (): Promise<Record<string, boolean>
 };
 export const apiUpdateOwnerFeatureFlags = (flags: Record<string, boolean>) =>
   req("/api/operator-features", { method: "PUT", body: JSON.stringify({ ownerFeatureFlags: flags }) });
+
+// ── Owner Visibility: End-of-Day Report + Cash Reconciliation ──
+// GET returns the report for a date (or a draft built from live data).
+// POST signs off the report (persists countedCash, computes discrepancy).
+export const apiGetEodReport = (date?: string) =>
+  req(`/api/owner-eod${date ? `?date=${date}` : ""}`);
+export const apiSignOffEod = (data: { reportDate: string; countedCash: number; notes?: string }) =>
+  req("/api/owner-eod", { method: "POST", body: JSON.stringify(data) });
+
+// ── Operational Control: Shift Handover ──
+// GET returns { current: ShiftHandover | null, history: ShiftHandover[] }.
+// POST with action='start' opens a new shift; action='end' closes it.
+export const apiGetShiftHandover = () => req("/api/shift-handover");
+export const apiShiftAction = (data: {
+  action: "start" | "end";
+  shiftType?: string;
+  openingCash?: number;
+  closingCash?: number;
+  handoverNotes?: string;
+}) => req("/api/shift-handover", { method: "POST", body: JSON.stringify(data) });

@@ -549,6 +549,16 @@ model HousekeepingTask {
   providerId    String
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
+  // ── Maintenance Ticket fields (only populated when type=MAINTENANCE) ──
+  // These extend the existing HousekeepingTask to support a full ticket
+  // workflow: Open → Diagnosed → In Progress → Resolved.
+  reportedBy      String?
+  priority        String               @default("MEDIUM")
+  diagnosis       String               @default("")
+  partsUsed       String               @default("")
+  resolutionNotes String               @default("")
+  resolvedAt      DateTime?
+  resolvedById    String?
 
   provider Provider @relation(fields: [providerId], references: [id])
   room     Room     @relation(fields: [roomId], references: [id])
@@ -557,6 +567,78 @@ model HousekeepingTask {
   @@index([roomId])
   @@index([status])
   @@index([scheduledDate])
+  @@index([type])
+}
+
+// ── Owner Visibility & Operational Control ──
+// EndOfDayReport stores a snapshot of the day's financial activity
+// (payments by method, cash drawer count, discrepancy) and is signed
+// off by the closing shift's staff. Auto-generated daily at 23:00 by
+// a cron job; can also be created manually by staff.
+model EndOfDayReport {
+  id              String   @id @default(cuid())
+  reportDate      String                                    // YYYY-MM-DD (Africa/Addis_Ababa)
+  providerId      String
+  // Cash drawer reconciliation (all amounts in ETB)
+  openingCash     Float    @default(0)
+  cashPayments    Float    @default(0)
+  cashRefunds     Float    @default(0)
+  pettyCashExpenses Float @default(0)
+  expectedCash    Float    @default(0)
+  countedCash     Float    @default(0)
+  discrepancy     Float    @default(0)
+  // Non-cash payments (Telebirr, CBE, Card)
+  telebirrPayments Float  @default(0)
+  cbePayments       Float  @default(0)
+  cardPayments      Float  @default(0)
+  totalPayments     Float  @default(0)
+  // Activity counts
+  checkins          Int    @default(0)
+  checkouts         Int    @default(0)
+  newReservations   Int    @default(0)
+  cancellations     Int    @default(0)
+  noShows           Int    @default(0)
+  // Sign-off
+  signedOffById     String?
+  signedOffAt       DateTime?
+  closingShiftId    String?
+  notes             String   @default("")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  provider Provider @relation(fields: [providerId], references: [id])
+
+  @@unique([reportDate, providerId])
+  @@index([providerId])
+  @@index([reportDate])
+}
+
+// ShiftHandover tracks the start/end of each front-desk shift.
+// The opening clerk logs their starting cash; the closing clerk logs the
+// counted cash + signs off the report. The handover notes field lets
+// outgoing staff leave instructions for the incoming shift.
+model ShiftHandover {
+  id              String   @id @default(cuid())
+  providerId      String
+  shiftDate       String                                       // YYYY-MM-DD
+  shiftType       String   @default("DAY")                     // DAY | EVENING | NIGHT
+  staffStartId    String
+  staffEndId      String?
+  openingCash     Float    @default(0)
+  closingCash     Float?
+  discrepancy     Float    @default(0)
+  handoverNotes   String   @default("")
+  startedAt       DateTime @default(now())
+  endedAt         DateTime?
+  signedOffAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  provider Provider @relation(fields: [providerId], references: [id])
+
+  @@index([providerId])
+  @@index([shiftDate])
+  @@index([staffStartId])
 }
 
 model Review {

@@ -176,6 +176,15 @@ const MySubscriptionPage = lazyPage(
 const OperatorFeaturesPage = lazyPage(
   () => import("@/components/ghms/pages/operator-features-page")
 );
+const OwnerEodPage = lazyPage(
+  () => import("@/components/ghms/pages/owner-eod-page")
+);
+const ShiftHandoverPage = lazyPage(
+  () => import("@/components/ghms/pages/shift-handover-page")
+);
+const MaintenanceTicketsPage = lazyPage(
+  () => import("@/components/ghms/pages/maintenance-tickets-page")
+);
 
 // ── Page registry: maps page key → lazy component ──
 const PAGE_MAP: Record<string, React.LazyExoticComponent<React.ComponentType>> =
@@ -227,6 +236,9 @@ const PAGE_MAP: Record<string, React.LazyExoticComponent<React.ComponentType>> =
     "police-reports": PoliceReportsPage,
     "my-subscription": MySubscriptionPage,
     "operator-features": OperatorFeaturesPage,
+    "owner-eod": OwnerEodPage,
+    "shift-handover": ShiftHandoverPage,
+    "maintenance-tickets": MaintenanceTicketsPage,
   };
 
 // ── Page Renderer ──

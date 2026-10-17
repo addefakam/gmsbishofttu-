@@ -41,6 +41,9 @@ import {
   Smartphone,
   ExternalLink,
   TrendingUp,
+  FileText,
+  RefreshCw as RefreshCwIcon,
+  Wrench,
 } from "lucide-react";
 
 import { useTranslation } from "react-i18next";
@@ -244,9 +247,34 @@ const POLICE_PERMISSION_PAGE_MAP: Record<string, string[]> = {
   police_dispatch: ["notification-dispatch"],
 };
 
+// ── Owner Visibility & Operational Control nav items ──
+// These are added to the operator sidebar conditionally based on the
+// ownerFeatureFlags set by the system admin in Operator Features.
+const OWNER_EOD_NAV: NavItem = { page: "owner-eod", label: "End of Day", icon: FileText };
+const SHIFT_HANDOVER_NAV: NavItem = { page: "shift-handover", label: "Shift Handover", icon: RefreshCwIcon };
+const MAINTENANCE_TICKETS_NAV: NavItem = { page: "maintenance-tickets", label: "Maintenance Tickets", icon: Wrench };
+
 // ── Helper: get nav items based on role ──
-function getNavItems(user: CurrentUser, disabledPages: string[] = []): NavItem[] {
+function getNavItems(
+  user: CurrentUser,
+  disabledPages: string[] = [],
+  ownerFeatureFlags: Record<string, boolean> | null = null,
+): NavItem[] {
   const disabledSet = new Set(disabledPages);
+
+  // Build the operator nav items list — start with ALL_NAV_ITEMS, then
+  // conditionally append the owner feature items if their flags are on.
+  // Default to enabled if ownerFeatureFlags is null (not yet loaded) so
+  // the items appear immediately on first load — better UX than a flash
+  // of "missing items" while the flags fetch in parallel.
+  const ownerEodEnabled = ownerFeatureFlags == null || ownerFeatureFlags.endOfDayReport !== false;
+  const shiftHandoverEnabled = ownerFeatureFlags == null || ownerFeatureFlags.shiftHandover !== false;
+  const maintenanceTicketsEnabled = ownerFeatureFlags == null || ownerFeatureFlags.maintenanceTickets !== false;
+
+  const operatorItems: NavItem[] = [...ALL_NAV_ITEMS];
+  if (ownerEodEnabled) operatorItems.push(OWNER_EOD_NAV);
+  if (shiftHandoverEnabled) operatorItems.push(SHIFT_HANDOVER_NAV);
+  if (maintenanceTicketsEnabled) operatorItems.push(MAINTENANCE_TICKETS_NAV);
 
   switch (user.role) {
     case "POLICE": {
@@ -278,7 +306,7 @@ function getNavItems(user: CurrentUser, disabledPages: string[] = []): NavItem[]
       // Guest house owners (SUPERUSER with providerId) see the provider dashboard.
       // System admins (SUPERUSER without providerId) see the admin dashboard.
       if (user.providerId) {
-        return ALL_NAV_ITEMS.filter(
+        return operatorItems.filter(
           (item) => !OPERATOR_EXCLUDED.has(item.page) && !disabledSet.has(item.page)
         );
       }
@@ -286,7 +314,7 @@ function getNavItems(user: CurrentUser, disabledPages: string[] = []): NavItem[]
     }
 
     case "OPERATOR":
-      return ALL_NAV_ITEMS.filter(
+      return operatorItems.filter(
         (item) => !OPERATOR_EXCLUDED.has(item.page) && !disabledSet.has(item.page)
       );
 
@@ -641,7 +669,7 @@ function SidebarContent({
   onToggleCollapse: () => void;
 }) {
   const { t } = useTranslation("sidebar");
-  const { jointSession, setJointLoginDialogOpen, subscription, disabledPages, accommodationTab, setAccommodationTab } = useAppStore();
+  const { jointSession, setJointLoginDialogOpen, subscription, disabledPages, ownerFeatureFlags, accommodationTab, setAccommodationTab } = useAppStore();
 
   // ── Prevent flash of soon-to-be-hidden nav items ──
   // disabledPages starts as null (not yet fetched from the API).
@@ -655,7 +683,7 @@ function SidebarContent({
     (role === "SUPERUSER" && user.providerId);
   const waitingForDisabledPages = mightHaveDisabledPages && disabledPages === null;
 
-  const navItems = waitingForDisabledPages ? [] : getNavItems(user, disabledPages ?? []);
+  const navItems = waitingForDisabledPages ? [] : getNavItems(user, disabledPages ?? [], ownerFeatureFlags);
   const roleBadgeClass = getRoleBadgeClass(user.role);
 
   // ── Expandable sidebar sections (currently only 'Accommodation') ──

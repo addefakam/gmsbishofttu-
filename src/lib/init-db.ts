@@ -239,6 +239,59 @@ CREATE TABLE IF NOT EXISTS "HousekeepingTask" (
   "completedAt" TIMESTAMP(3),
   "providerId" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  -- Maintenance ticket fields (only populated when type='MAINTENANCE')
+  "reportedBy" TEXT,
+  "priority" TEXT NOT NULL DEFAULT 'MEDIUM',
+  "diagnosis" TEXT NOT NULL DEFAULT '',
+  "partsUsed" TEXT NOT NULL DEFAULT '',
+  "resolutionNotes" TEXT NOT NULL DEFAULT '',
+  "resolvedAt" TIMESTAMP(3),
+  "resolvedById" TEXT
+);
+CREATE TABLE IF NOT EXISTS "EndOfDayReport" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "reportDate" TEXT NOT NULL,
+  "providerId" TEXT NOT NULL,
+  "openingCash" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "cashPayments" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "cashRefunds" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "pettyCashExpenses" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "expectedCash" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "countedCash" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "discrepancy" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "telebirrPayments" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "cbePayments" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "cardPayments" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "totalPayments" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "checkins" INTEGER NOT NULL DEFAULT 0,
+  "checkouts" INTEGER NOT NULL DEFAULT 0,
+  "newReservations" INTEGER NOT NULL DEFAULT 0,
+  "cancellations" INTEGER NOT NULL DEFAULT 0,
+  "noShows" INTEGER NOT NULL DEFAULT 0,
+  "signedOffById" TEXT,
+  "signedOffAt" TIMESTAMP(3),
+  "closingShiftId" TEXT,
+  "notes" TEXT NOT NULL DEFAULT '',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "EndOfDayReport_reportDate_providerId_key" UNIQUE ("reportDate", "providerId")
+);
+CREATE TABLE IF NOT EXISTS "ShiftHandover" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "providerId" TEXT NOT NULL,
+  "shiftDate" TEXT NOT NULL,
+  "shiftType" TEXT NOT NULL DEFAULT 'DAY',
+  "staffStartId" TEXT NOT NULL,
+  "staffEndId" TEXT,
+  "openingCash" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "closingCash" DOUBLE PRECISION,
+  "discrepancy" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "handoverNotes" TEXT NOT NULL DEFAULT '',
+  "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "endedAt" TIMESTAMP(3),
+  "signedOffAt" TIMESTAMP(3),
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS "Review" (
@@ -739,6 +792,25 @@ CREATE INDEX IF NOT EXISTS "HousekeepingTask_providerId_idx" ON "HousekeepingTas
 CREATE INDEX IF NOT EXISTS "HousekeepingTask_roomId_idx" ON "HousekeepingTask" ("roomId");
 CREATE INDEX IF NOT EXISTS "HousekeepingTask_status_idx" ON "HousekeepingTask" ("status");
 CREATE INDEX IF NOT EXISTS "HousekeepingTask_scheduledDate_idx" ON "HousekeepingTask" ("scheduledDate");
+CREATE INDEX IF NOT EXISTS "HousekeepingTask_type_idx" ON "HousekeepingTask" ("type");
+CREATE INDEX IF NOT EXISTS "EndOfDayReport_providerId_idx" ON "EndOfDayReport" ("providerId");
+CREATE INDEX IF NOT EXISTS "EndOfDayReport_reportDate_idx" ON "EndOfDayReport" ("reportDate");
+CREATE INDEX IF NOT EXISTS "ShiftHandover_providerId_idx" ON "ShiftHandover" ("providerId");
+CREATE INDEX IF NOT EXISTS "ShiftHandover_shiftDate_idx" ON "ShiftHandover" ("shiftDate");
+CREATE INDEX IF NOT EXISTS "ShiftHandover_staffStartId_idx" ON "ShiftHandover" ("staffStartId");
+-- ── Maintenance ticket fields on HousekeepingTask (additive, idempotent) ──
+-- These columns are nullable / have defaults, so the ALTER TABLE is safe
+-- to run on existing databases without breaking existing rows.
+DO $$ BEGIN ALTER TABLE "HousekeepingTask" ADD COLUMN "reportedBy" TEXT; EXCEPTION WHEN duplicate_column THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "HousekeepingTask" ADD COLUMN "priority" TEXT NOT NULL DEFAULT 'MEDIUM'; EXCEPTION WHEN duplicate_column THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "HousekeepingTask" ADD COLUMN "diagnosis" TEXT NOT NULL DEFAULT ''; EXCEPTION WHEN duplicate_column THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "HousekeepingTask" ADD COLUMN "partsUsed" TEXT NOT NULL DEFAULT ''; EXCEPTION WHEN duplicate_column THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "HousekeepingTask" ADD COLUMN "resolutionNotes" TEXT NOT NULL DEFAULT ''; EXCEPTION WHEN duplicate_column THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "HousekeepingTask" ADD COLUMN "resolvedAt" TIMESTAMP(3); EXCEPTION WHEN duplicate_column THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "HousekeepingTask" ADD COLUMN "resolvedById" TEXT; EXCEPTION WHEN duplicate_column THEN null; END $$;
+-- EndOfDayReport + ShiftHandover FK to Provider (idempotent)
+DO $$ BEGIN ALTER TABLE "EndOfDayReport" ADD CONSTRAINT "EndOfDayReport_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE RESTRICT ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "ShiftHandover" ADD CONSTRAINT "ShiftHandover_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE RESTRICT ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
 CREATE INDEX IF NOT EXISTS "Review_guestId_idx" ON "Review" ("guestId");
 CREATE INDEX IF NOT EXISTS "Review_reservationId_idx" ON "Review" ("reservationId");
 CREATE INDEX IF NOT EXISTS "Review_createdAt_idx" ON "Review" ("createdAt");

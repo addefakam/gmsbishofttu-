@@ -19,6 +19,12 @@ export async function GET(req: NextRequest) {
     if (status) {
       where.status = status;
     }
+    // Optional type filter — e.g. ?type=MAINTENANCE for the maintenance
+    // ticket workflow tab. Without this filter, all task types are returned.
+    const type = searchParams.get("type");
+    if (type) {
+      where.type = type;
+    }
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "50")));
     const skip = (page - 1) * limit;
@@ -27,7 +33,7 @@ export async function GET(req: NextRequest) {
       db.housekeepingTask.findMany({
         where,
         orderBy: { scheduledDate: "asc" },
-        include: {},
+        include: { room: { select: { id: true, number: true, name: true, type: true, status: true } } },
         skip,
         take: limit,
       }),
@@ -56,7 +62,11 @@ export async function POST(req: NextRequest) {
     });
 
     const body = await req.json();
-    const { roomId, type, assignedTo, scheduledDate, notes } = body;
+    const {
+      roomId, type, assignedTo, scheduledDate, notes,
+      // Maintenance ticket fields (only used when type=MAINTENANCE):
+      reportedBy, priority, diagnosis, partsUsed, resolutionNotes,
+    } = body;
 
     if (!roomId || !type || !scheduledDate) {
       return NextResponse.json(
@@ -83,8 +93,16 @@ export async function POST(req: NextRequest) {
         scheduledDate,
         notes: notes || "",
         providerId: auth.providerId,
+        // Maintenance ticket fields — only populated when type=MAINTENANCE
+        ...(type === "MAINTENANCE" ? {
+          reportedBy: reportedBy || auth.userName || null,
+          priority: priority || "MEDIUM",
+          diagnosis: diagnosis || "",
+          partsUsed: partsUsed || "",
+          resolutionNotes: resolutionNotes || "",
+        } : {}),
       },
-      include: {},
+      include: { room: { select: { id: true, number: true, name: true, type: true, status: true } } },
     });
 
     // Staff activity log
