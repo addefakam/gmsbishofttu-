@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
-import { apiGetHousekeeping, apiCreateHousekeeping, apiUpdateHousekeeping } from "@/lib/api";
+import { apiGetHousekeeping, apiCreateHousekeeping, apiUpdateHousekeeping, apiGetRooms } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +80,7 @@ export default function MaintenanceTicketsPage() {
   const { t } = useTranslation("dashboard");
   const { refreshKey } = useAppStore();
   const [tasks, setTasks] = useState<HousekeepingTask[]>([]);
+  const [rooms, setRooms] = useState<Array<{ id: string; number: string; name: string; type: string; status: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "open" | "aging" | "resolved">("all");
   const [search, setSearch] = useState("");
@@ -104,9 +105,13 @@ export default function MaintenanceTicketsPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiGetHousekeeping("type=MAINTENANCE&limit=100");
-      const list = Array.isArray(res?.tasks) ? res.tasks : [];
+      const [tasksRes, roomsRes] = await Promise.all([
+        apiGetHousekeeping("type=MAINTENANCE&limit=100"),
+        apiGetRooms().catch(() => []),
+      ]);
+      const list = Array.isArray(tasksRes?.tasks) ? tasksRes.tasks : [];
       setTasks(list);
+      setRooms(Array.isArray(roomsRes) ? roomsRes : []);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t("mtErrorLoad", { defaultValue: "Failed to load maintenance tickets" }));
     } finally {
@@ -353,14 +358,23 @@ export default function MaintenanceTicketsPage() {
           <div className="space-y-3">
             <div>
               <Label className="text-xs">Room *</Label>
-              <Input
-                placeholder={t("mtRoomIdPlaceholder", { defaultValue: "Room number or ID" })}
-                value={form.roomId}
-                onChange={(e) => setForm({ ...form, roomId: e.target.value })}
-              />
-              <p className="text-[10px] text-slate-400 mt-1">
-                {t("mtRoomIdHint", { defaultValue: "Enter the room ID (cuid) — a future version will have a room picker." })}
-              </p>
+              <Select value={form.roomId} onValueChange={(v) => setForm({ ...form, roomId: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t("mtRoomSelect", { defaultValue: "Select a room" })} />
+                </SelectTrigger>
+                <SelectContent>
+                  {rooms.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.number}{r.name ? ` — ${r.name}` : ""} ({r.status})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {rooms.length === 0 && (
+                <p className="text-[10px] text-amber-600 mt-1">
+                  {t("mtNoRooms", { defaultValue: "No rooms found. Add rooms first via Accommodation → Rooms." })}
+                </p>
+              )}
             </div>
             <div>
               <Label className="text-xs">Priority</Label>

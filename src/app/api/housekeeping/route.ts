@@ -130,6 +130,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validate that the roomId actually exists + belongs to this provider.
+    // Without this, Prisma's create() with `include: { room: ... }` will throw
+    // 'Inconsistent query result: Field room is required to return data, got
+    // null instead.' when the FK doesn't match any row.
+    const room = await db.room.findFirst({
+      where: { id: roomId, providerId: auth.providerId },
+      select: { id: true, number: true, name: true, type: true, status: true },
+    });
+    if (!room) {
+      return NextResponse.json(
+        { error: "Room not found. Please select a valid room from the dropdown." },
+        { status: 400 }
+      );
+    }
+
     // Try to create with all maintenance ticket fields. If the DB columns
     // don't exist yet (shouldn't happen after ensureMaintenanceTicketColumns,
     // but defensive), retry without them.
