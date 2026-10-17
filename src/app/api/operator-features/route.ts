@@ -6,6 +6,31 @@ import { ensureNewTables } from "@/lib/ensure-tables";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Force-adds the operatorFeatureFlags column to PoliceAlertConfig if it
+ * doesn't exist yet. This bypasses the _initDone cache in ensureDatabase()
+ * — which can skip migrations on Vercel warm serverless instances that ran
+ * ensureDatabase() before the new migration was deployed.
+ *
+ * Uses Prisma's $executeRawUnsafe with a DO $$ BEGIN ... EXCEPTION WHEN
+ * duplicate_column ... END $$ block — idempotent + safe to run on every
+ * PUT request.
+ */
+async function ensureOperatorFeatureFlagsColumn(): Promise<void> {
+  try {
+    await db.$executeRawUnsafe(`
+      DO $$ BEGIN
+        ALTER TABLE "PoliceAlertConfig" ADD COLUMN "operatorFeatureFlags" TEXT NOT NULL DEFAULT '{"ownerDashboard":true,"endOfDayReport":true,"shiftHandover":true,"maintenanceTickets":true}';
+      EXCEPTION WHEN duplicate_column THEN null;
+      END $$
+    `);
+  } catch (err) {
+    // Non-blocking — the PUT handler's fallback logic handles missing
+    // columns gracefully. Just log the error so we can debug.
+    console.warn("[operator-features] ensureOperatorFeatureFlagsColumn: ALTER TABLE failed (non-blocking):", err instanceof Error ? err.message : err);
+  }
+}
+
 // All page keys that can be toggled for OPERATOR/STAFF
 // NOTE: 'users' (Account Management) is intentionally NOT in this list —
 // the owner must always be able to manage their staff accounts. Removing
@@ -109,10 +134,10 @@ export function parseOwnerFeatureFlags(raw: string | null | undefined): Record<O
  */
 export async function GET(req: NextRequest) {
   try {
-    // Run idempotent migrations (adds operatorFeatureFlags column if missing).
-    // This is fire-and-forget — we don't await it because the defensive
-    // fallback below handles the case where the column isn't there yet.
-    try { await ensureNewTables(); } catch { /* non-blocking */ }
+    // Force-add the operatorFeatureFlags column BEFORE we try to SELECT it.
+    // This bypasses the _initDone cache in ensureDatabase() which can skip
+    // new migrations on Vercel warm instances.
+    await ensureOperatorFeatureFlagsColumn();
     const auth = await getAuthContext(req);
     if (auth.role !== "SUPERUSER" && auth.role !== "OPERATOR" && auth.role !== "STAFF") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
@@ -204,7 +229,12 @@ export async function GET(req: NextRequest) {
  */
 export async function PUT(req: NextRequest) {
   try {
-    // Run idempotent migrations first (adds operatorFeatureFlags column if missing).
+    // Force-add the operatorFeatureFlags column BEFORE we try to update it.
+    // This bypasses the _initDone cache in ensureDatabase() which can skip
+    // new migrations on Vercel warm instances.
+    await ensureOperatorFeatureFlagsColumn();
+    // Also run the full migration suite (fire-and-forget) for any other
+    // new columns/tables that might also be missing.
     try { await ensureNewTables(); } catch { /* non-blocking */ }
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { allowSuperuser: true });
