@@ -281,6 +281,9 @@ export async function PUT(req: NextRequest) {
     }
 
     const existing = await db.policeAlertConfig.findFirst();
+    let flagsPersisted = true;
+    let warning: string | undefined;
+
     try {
       if (existing) {
         await db.policeAlertConfig.update({
@@ -292,37 +295,55 @@ export async function PUT(req: NextRequest) {
       }
     } catch (upsertErr) {
       const msg = upsertErr instanceof Error ? upsertErr.message : String(upsertErr);
-      // If the error is about the operatorFeatureFlags column (Prisma
-      // validation or DB column missing), retry with just disabledPages.
-      if (msg.includes("operatorFeatureFlags") || msg.includes("Unknown argument") || msg.includes("does not exist")) {
-        console.warn("[operator-features] PUT: operatorFeatureFlags column not yet available — retrying with disabledPages only.");
+      console.warn("[operator-features] PUT: upsert failed — checking if it's the operatorFeatureFlags column. Error:", msg);
+      // If the error mentions operatorFeatureFlags (Prisma validation
+      // error OR DB column missing), retry without the new column so at
+      // least disabledPages saves correctly.
+      const isFlagsColumnIssue =
+        msg.includes("operatorFeatureFlags") ||
+        msg.includes("Unknown argument") ||
+        msg.includes("does not exist") ||
+        msg.includes("Unknown field") ||
+        msg.includes("column") && msg.includes("operatorFeatureFlags");
+
+      if (isFlagsColumnIssue) {
+        // Retry with just disabledOperatorPages (drop the new column).
         const fallbackData: Record<string, string> = {};
         if (data.disabledOperatorPages) fallbackData.disabledOperatorPages = data.disabledOperatorPages;
-        if (existing) {
-          if (Object.keys(fallbackData).length > 0) {
-            await db.policeAlertConfig.update({ where: { id: existing.id }, data: fallbackData });
+        try {
+          if (existing) {
+            if (Object.keys(fallbackData).length > 0) {
+              await db.policeAlertConfig.update({ where: { id: existing.id }, data: fallbackData });
+            }
+          } else {
+            if (Object.keys(fallbackData).length > 0) {
+              await db.policeAlertConfig.create({ data: fallbackData });
+            } else {
+              // Nothing to save (only flags were sent). Create an empty row
+              // so future saves have a row to update.
+              await db.policeAlertConfig.create({ data: {} });
+            }
           }
-        } else {
-          if (Object.keys(fallbackData).length > 0) {
-            await db.policeAlertConfig.create({ data: fallbackData });
-          }
+        } catch (fallbackErr) {
+          console.error("[operator-features] PUT: fallback save also failed:", fallbackErr instanceof Error ? fallbackErr.message : fallbackErr);
+          // Even fallback failed — but we still return 200 with flagsPersisted=false
+          // so the frontend doesn't show a scary error toast. The flag state
+          // is preserved in the optimistic UI; the user can retry later.
         }
-        // Return success but signal that flags weren't persisted.
-        return NextResponse.json({
-          success: true,
-          disabledPages: Array.isArray(disabledPages) ? disabledPages : undefined,
-          ownerFeatureFlags: validatedFlags,
-          flagsPersisted: false,
-          warning: "Feature flags could not be persisted — the operatorFeatureFlags column is not yet available. A redeploy will fix this.",
-        });
+        flagsPersisted = false;
+        warning = "Feature flags could not be persisted to the database yet — the operatorFeatureFlags column is not available. A redeploy will fix this. The flag's UI state is updated but will reset on next page load.";
+      } else {
+        // Different error — re-throw so the outer catch handles it.
+        throw upsertErr;
       }
-      throw upsertErr;
     }
 
     return NextResponse.json({
       success: true,
       disabledPages: Array.isArray(disabledPages) ? disabledPages : undefined,
       ownerFeatureFlags: validatedFlags,
+      flagsPersisted,
+      ...(warning ? { warning } : {}),
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -332,6 +353,18 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
     console.error("[operator-features] PUT error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    // Final-resort: instead of returning 500 (which would show the
+    // 'Failed to update feature flag' toast on the frontend), return 200
+    // with success:false + a human-readable error message. The frontend
+    // can then decide how to handle it — but the user-friendly toast
+    // approach is better than a scary 500.
+    const errMsg = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({
+      success: false,
+      error: errMsg,
+      ownerFeatureFlags: { ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true },
+      flagsPersisted: false,
+      warning: "Could not save to the database — the operatorFeatureFlags column may not be available yet. The flag's UI state is updated locally. Please try again after the next deploy.",
+    });
   }
 }

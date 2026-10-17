@@ -206,19 +206,43 @@ export default function OperatorFeaturesPage() {
     setOwnerFeatureFlags(flagsMap);
     setSavingFlags(true);
     try {
-      await apiUpdateOwnerFeatureFlags(flagsMap);
-      toast.success(
-        newEnabled
-          ? t("flagEnabled", { defaultValue: "Feature enabled" })
-          : t("flagDisabled", { defaultValue: "Feature disabled" })
-      );
-    } catch {
+      const result = await apiUpdateOwnerFeatureFlags(flagsMap);
+      // The API may return 200 with success:false if the operatorFeatureFlags
+      // column isn't available yet (during the deploy window). In that case
+      // the flag's UI state stays updated (optimistic) but we warn the user
+      // that it didn't persist — instead of reverting + showing the scary
+      // 'Failed to update feature flag' toast.
+      if (result && result.success === false) {
+        toast.warning(
+          result.warning
+            || t("flagNotPersisted", { defaultValue: "Flag updated locally but not saved to the database. Please try again later." })
+        );
+        // Don't revert — keep the optimistic state so the user can keep
+        // using the app. The flag will reset on next page load.
+      } else if (result && result.flagsPersisted === false) {
+        // Success but flags didn't persist — show a soft warning.
+        toast.warning(
+          result.warning
+            || t("flagNotPersisted", { defaultValue: "Flag updated locally but not saved to the database. Please try again later." })
+        );
+      } else {
+        toast.success(
+          newEnabled
+            ? t("flagEnabled", { defaultValue: "Feature enabled" })
+            : t("flagDisabled", { defaultValue: "Feature disabled" })
+        );
+      }
+    } catch (err: unknown) {
       // Revert on failure
       setOwnerFeatures((prev) =>
         prev.map((f) => (f.key === key ? { ...f, enabled: !newEnabled } : f))
       );
       const revertedMap = { ...flagsMap, [key]: !newEnabled };
       setOwnerFeatureFlags(revertedMap);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[operator-features-page] toggleOwnerFeature error:", msg);
+      // Don't double-toast if it's an auth redirect.
+      if (msg.includes("Session expired") || msg.includes("Please sign in")) return;
       toast.error(t("flagSaveError", { defaultValue: "Failed to update feature flag" }));
     } finally {
       setSavingFlags(false);
