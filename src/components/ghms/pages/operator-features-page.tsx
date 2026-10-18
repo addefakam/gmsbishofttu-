@@ -31,6 +31,7 @@ import {
   FileText,
   RefreshCw as RefreshCwIcon,
   Wrench,
+  Building2,
 } from "lucide-react";
 
 interface FeaturePage {
@@ -66,6 +67,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   FileText,
   RefreshCw: RefreshCwIcon,
   Wrench,
+  Building2,
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -121,19 +123,26 @@ export default function OperatorFeaturesPage() {
           { key: "endOfDayReport", label: "End-of-Day Report", description: "", icon: "FileText", category: "owner-visibility" },
           { key: "shiftHandover", label: "Shift Handover Log", description: "", icon: "RefreshCw", category: "operational-control" },
           { key: "maintenanceTickets", label: "Maintenance Tickets", description: "", icon: "Wrench", category: "operational-control" },
+          { key: "multiProviderRooms", label: "Multi-Provider Room Breakdown", description: "", icon: "Building2", category: "owner-visibility" },
         ];
         setOwnerFeatures(FALLBACK_FLAGS.map((f) => ({
           ...f,
-          enabled: res.ownerFeatureFlags[f.key] !== false,
+          // multiProviderRooms defaults to false; others default to true
+          enabled: f.key === "multiProviderRooms"
+            ? res.ownerFeatureFlags[f.key] === true
+            : res.ownerFeatureFlags[f.key] !== false,
         })));
       } else {
-        // No owner features returned at all — default all 4 to enabled so
-        // the page renders with the toggle UI visible.
+        // No owner features returned at all — default most to enabled so
+        // the page renders with the toggle UI visible. multiProviderRooms
+        // defaults to OFF (opt-in — grants operators visibility into
+        // other guesthouses' rooms).
         setOwnerFeatures([
           { key: "ownerDashboard", label: "Owner Dashboard Enhancements", description: "Real-time KPIs, alerts, and revenue chart on the dashboard.", icon: "TrendingUp", category: "owner-visibility", enabled: true },
           { key: "endOfDayReport", label: "End-of-Day Report + Cash Reconciliation", description: "Daily cash reconciliation with discrepancy detection + sign-off.", icon: "FileText", category: "owner-visibility", enabled: true },
           { key: "shiftHandover", label: "Shift Handover Log", description: "Track shift openings, closings, and cash handovers.", icon: "RefreshCw", category: "operational-control", enabled: true },
           { key: "maintenanceTickets", label: "Maintenance Ticket System", description: "Maintenance workflow from Open to Resolved with aging alerts.", icon: "Wrench", category: "operational-control", enabled: true },
+          { key: "multiProviderRooms", label: "Multi-Provider Room Breakdown (City-Wide)", description: "View room availability across ALL approved guesthouses. Off by default — opt-in.", icon: "Building2", category: "owner-visibility", enabled: false },
         ]);
       }
       // Persist to the global store so other components can read the flags
@@ -141,8 +150,8 @@ export default function OperatorFeaturesPage() {
       if (res?.ownerFeatureFlags) {
         setOwnerFeatureFlags(res.ownerFeatureFlags);
       } else {
-        // Default all flags ON if API didn't return them.
-        setOwnerFeatureFlags({ ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true });
+        // Default most flags ON, multiProviderRooms OFF (opt-in)
+        setOwnerFeatureFlags({ ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true, multiProviderRooms: false });
       }
     } catch (err: unknown) {
       // Don't show the error toast if it's an auth redirect (the req()

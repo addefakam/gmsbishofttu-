@@ -514,6 +514,10 @@ export const apiToggleAnomalyDetection = (enabled: boolean) =>
 // Police room availability (city-wide)
 export const apiPoliceRoomAvailability = () => req("/api/police-room-availability");
 
+// Operator room availability (city-wide) — gated behind the multiProviderRooms
+// feature flag. Returns 403 if the flag is OFF.
+export const apiOperatorRoomAvailability = () => req("/api/operator-room-availability");
+
 // Police suspend provider (with reason + notification to provider)
 export const apiPoliceSuspendProvider = (data: Record<string, unknown>) =>
   req("/api/police-suspend-provider", { method: "POST", body: JSON.stringify(data) });
@@ -633,7 +637,7 @@ export const apiGetDisabledPages = async (): Promise<string[]> => {
 
 // Owner Visibility & Operational Control feature flags.
 // Returns the full flag map { ownerDashboard, endOfDayReport, shiftHandover,
-// maintenanceTickets }. Used by the frontend to conditionally render the
+// maintenanceTickets, multiProviderRooms }. Used by the frontend to conditionally render the
 // owner dashboard enhancements, EoD report, shift handover, and maintenance
 // tickets — based on which features the system admin has enabled.
 export const apiGetOwnerFeatureFlags = async (): Promise<Record<string, boolean>> => {
@@ -642,10 +646,10 @@ export const apiGetOwnerFeatureFlags = async (): Promise<Record<string, boolean>
     if (res?.ownerFeatureFlags && typeof res.ownerFeatureFlags === "object") {
       return res.ownerFeatureFlags as Record<string, boolean>;
     }
-    // Default: all features enabled (matches backend DEFAULT_OWNER_FEATURE_FLAGS)
-    return { ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true };
+    // Default: most features enabled, multiProviderRooms OFF (opt-in)
+    return { ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true, multiProviderRooms: false };
   } catch {
-    return { ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true };
+    return { ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true, multiProviderRooms: false };
   }
 };
 export const apiUpdateOwnerFeatureFlags = (flags: Record<string, boolean>) =>

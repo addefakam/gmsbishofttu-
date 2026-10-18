@@ -78,6 +78,10 @@ const TOGGLABLE_PAGES = [
 // Each flag controls whether the corresponding feature is shown to
 // guesthouse owners / operators. Default is true (enabled) so new
 // deployments get the features; admins can disable any of them.
+//
+// EXCEPTION: multiProviderRooms defaults to FALSE — it grants operators
+// visibility into OTHER guesthouses' rooms (city-wide), which is a new
+// power that admins must explicitly enable per deployment.
 export const OWNER_FEATURE_FLAGS = [
   {
     key: "ownerDashboard",
@@ -107,17 +111,27 @@ export const OWNER_FEATURE_FLAGS = [
     icon: "Wrench",
     category: "operational-control",
   },
+  {
+    key: "multiProviderRooms",
+    label: "Multi-Provider Room Breakdown (City-Wide)",
+    description: "Allows operators/owners to view room availability across ALL approved guesthouses (city-wide), not just their own. Similar to the police dashboard's provider breakdown. Off by default — admin must explicitly enable.",
+    icon: "Building2",
+    category: "owner-visibility",
+  },
 ] as const;
 
 export type OwnerFeatureFlagKey = (typeof OWNER_FEATURE_FLAGS)[number]["key"];
 
-// Default: all features enabled. Used when no row exists yet or when the
-// stored JSON is missing a key (forward-compatible — new flags default ON).
+// Default: most features enabled (true) so new deployments get them
+// automatically. EXCEPTION: multiProviderRooms defaults to false because
+// it grants operators visibility into OTHER guesthouses' rooms — a new
+// power that admins must explicitly opt into.
 export const DEFAULT_OWNER_FEATURE_FLAGS: Record<OwnerFeatureFlagKey, boolean> = {
   ownerDashboard: true,
   endOfDayReport: true,
   shiftHandover: true,
   maintenanceTickets: true,
+  multiProviderRooms: false,
 };
 
 /** Parse the operatorFeatureFlags JSON string into a typed record,
@@ -129,10 +143,11 @@ export function parseOwnerFeatureFlags(raw: string | null | undefined): Record<O
     const result = { ...DEFAULT_OWNER_FEATURE_FLAGS };
     (Object.keys(DEFAULT_OWNER_FEATURE_FLAGS) as OwnerFeatureFlagKey[]).forEach((k) => {
       const v = parsed[k];
-      // Treat only explicit `false` as disabled — anything else (true,
-      // undefined, null, wrong type) keeps the default `true`. This means
-      // disabling a feature requires the admin to set it explicitly to false.
-      if (v === false) result[k] = false;
+      // Treat only explicit `true` or `false` as a stored value.
+      // Missing keys fall back to their DEFAULT_OWNER_FEATURE_FLAGS value.
+      // (multiProviderRooms default is false; others are true.)
+      if (v === true) result[k] = true;
+      else if (v === false) result[k] = false;
     });
     return result;
   } catch {

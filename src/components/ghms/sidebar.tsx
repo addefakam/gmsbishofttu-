@@ -258,6 +258,7 @@ const POLICE_PERMISSION_PAGE_MAP: Record<string, string[]> = {
 const OWNER_EOD_NAV: NavItem = { page: "owner-eod", label: "End of Day", icon: FileText };
 const SHIFT_HANDOVER_NAV: NavItem = { page: "shift-handover", label: "Shift Handover", icon: RefreshCwIcon };
 const MAINTENANCE_TICKETS_NAV: NavItem = { page: "maintenance-tickets", label: "Maintenance Tickets", icon: Wrench };
+const MULTI_PROVIDER_ROOMS_NAV: NavItem = { page: "operator-rooms-citywide", label: "All Guesthouses", icon: Building2 };
 
 // ── Helper: get nav items based on role ──
 function getNavItems(
@@ -275,6 +276,10 @@ function getNavItems(
   const ownerEodEnabled = ownerFeatureFlags == null || ownerFeatureFlags.endOfDayReport !== false;
   const shiftHandoverEnabled = ownerFeatureFlags == null || ownerFeatureFlags.shiftHandover !== false;
   const maintenanceTicketsEnabled = ownerFeatureFlags == null || ownerFeatureFlags.maintenanceTickets !== false;
+  // multiProviderRooms defaults to FALSE — only show the nav item when the
+  // admin has explicitly enabled it. Use `=== true` (not `!== false`) so
+  // null/undefined (not yet loaded) keeps the item hidden.
+  const multiProviderRoomsEnabled = ownerFeatureFlags?.multiProviderRooms === true;
 
   const operatorItems: NavItem[] = [...ALL_NAV_ITEMS];
   // Owner Overview page is only for SUPERUSER-with-providerId (owners).
@@ -289,6 +294,7 @@ function getNavItems(
   if (ownerEodEnabled) operatorItems.push(OWNER_EOD_NAV);
   if (shiftHandoverEnabled) operatorItems.push(SHIFT_HANDOVER_NAV);
   if (maintenanceTicketsEnabled) operatorItems.push(MAINTENANCE_TICKETS_NAV);
+  if (multiProviderRoomsEnabled) operatorItems.push(MULTI_PROVIDER_ROOMS_NAV);
 
   switch (user.role) {
     case "POLICE": {
@@ -1031,7 +1037,7 @@ export default function Sidebar() {
     if (useAppStore.getState().ownerFeatureFlags === null) {
       apiGetOwnerFeatureFlags()
         .then((flags) => setOwnerFeatureFlags(flags))
-        .catch(() => setOwnerFeatureFlags({ ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true }));
+        .catch(() => setOwnerFeatureFlags({ ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true, multiProviderRooms: false }));
     }
   }, [mounted, currentUser, setDisabledPages, setOwnerFeatureFlags]);
 

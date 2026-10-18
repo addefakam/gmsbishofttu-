@@ -188,6 +188,9 @@ const MaintenanceTicketsPage = lazyPage(
 const OwnerOverviewPage = lazyPage(
   () => import("@/components/ghms/pages/owner-overview-page")
 );
+const OperatorRoomsCitywidePage = lazyPage(
+  () => import("@/components/ghms/pages/operator-rooms-citywide-page")
+);
 
 // ── Page registry: maps page key → lazy component ──
 const PAGE_MAP: Record<string, React.LazyExoticComponent<React.ComponentType>> =
@@ -243,6 +246,7 @@ const PAGE_MAP: Record<string, React.LazyExoticComponent<React.ComponentType>> =
     "shift-handover": ShiftHandoverPage,
     "maintenance-tickets": MaintenanceTicketsPage,
     "owner-overview": OwnerOverviewPage,
+    "operator-rooms-citywide": OperatorRoomsCitywidePage,
   };
 
 // ── Page Renderer ──
