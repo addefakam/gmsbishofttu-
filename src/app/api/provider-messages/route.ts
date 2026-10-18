@@ -61,68 +61,76 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Conversation list mode ──
-    // Fetch all messages where the current provider is sender or recipient.
-    // Group by the "other" provider and get the latest message + unread count.
-    const allMessages = await db.providerMessage.findMany({
-      where: {
-        OR: [
-          { fromProviderId: myProviderId },
-          { toProviderId: myProviderId },
-        ],
-      },
-      orderBy: { createdAt: "desc" },
-      take: 500,
-      include: {
-        fromProvider: { select: { id: true, name: true, ownerName: true, phone: true } },
-        toProvider: { select: { id: true, name: true, ownerName: true, phone: true } },
-      },
-    });
-
-    // Group by the other provider's ID
-    const conversationMap = new Map<string, {
-      providerId: string;
-      providerName: string;
-      ownerName: string;
-      phone: string;
-      lastMessage: string;
-      lastMessageAt: string;
-      lastMessageFromMe: boolean;
-      unreadCount: number;
-    }>();
-
-    for (const msg of allMessages) {
-      const isFromMe = msg.fromProviderId === myProviderId;
-      const otherProvider = isFromMe ? msg.toProvider : msg.fromProvider;
-      if (!otherProvider) continue;
-
-      const existing = conversationMap.get(otherProvider.id);
-      if (!existing) {
-        conversationMap.set(otherProvider.id, {
-          providerId: otherProvider.id,
-          providerName: otherProvider.name,
-          ownerName: otherProvider.ownerName || "",
-          phone: otherProvider.phone || "",
-          lastMessage: msg.message,
-          lastMessageAt: msg.createdAt.toISOString(),
-          lastMessageFromMe: isFromMe,
-          unreadCount: isFromMe ? 0 : (msg.isRead ? 0 : 1),
-        });
-      } else if (!isFromMe && !msg.isRead) {
-        existing.unreadCount++;
-      }
-    }
-
-    // Sort by last message time (most recent first)
-    const conversations = Array.from(conversationMap.values()).sort((a, b) =>
-      new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
-    );
-
-    // Also return a list of all approved providers (for "new conversation" picker)
+    // Fetch all providers FIRST (this doesn't depend on the ProviderMessage
+    // table existing) so the "New Chat" picker always has data — even if
+    // the messages table hasn't been migrated yet.
     const allProviders = await db.provider.findMany({
       where: { status: "APPROVED", id: { not: myProviderId } },
       select: { id: true, name: true, ownerName: true, phone: true },
       orderBy: { name: "asc" },
     });
+
+    // Fetch all messages where the current provider is sender or recipient.
+    // Wrap in try/catch — if the ProviderMessage table doesn't exist yet,
+    // return an empty conversations list (but still return allProviders).
+    let conversations: Array<{
+      providerId: string; providerName: string; ownerName: string; phone: string;
+      lastMessage: string; lastMessageAt: string; lastMessageFromMe: boolean;
+      unreadCount: number;
+    }> = [];
+    try {
+      const allMessages = await db.providerMessage.findMany({
+        where: {
+          OR: [
+            { fromProviderId: myProviderId },
+            { toProviderId: myProviderId },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+        take: 500,
+        include: {
+          fromProvider: { select: { id: true, name: true, ownerName: true, phone: true } },
+          toProvider: { select: { id: true, name: true, ownerName: true, phone: true } },
+        },
+      });
+
+      // Group by the other provider's ID
+      const conversationMap = new Map<string, {
+        providerId: string; providerName: string; ownerName: string; phone: string;
+        lastMessage: string; lastMessageAt: string; lastMessageFromMe: boolean;
+        unreadCount: number;
+      }>();
+
+      for (const msg of allMessages) {
+        const isFromMe = msg.fromProviderId === myProviderId;
+        const otherProvider = isFromMe ? msg.toProvider : msg.fromProvider;
+        if (!otherProvider) continue;
+
+        const existing = conversationMap.get(otherProvider.id);
+        if (!existing) {
+          conversationMap.set(otherProvider.id, {
+            providerId: otherProvider.id,
+            providerName: otherProvider.name,
+            ownerName: otherProvider.ownerName || "",
+            phone: otherProvider.phone || "",
+            lastMessage: msg.message,
+            lastMessageAt: msg.createdAt.toISOString(),
+            lastMessageFromMe: isFromMe,
+            unreadCount: isFromMe ? 0 : (msg.isRead ? 0 : 1),
+          });
+        } else if (!isFromMe && !msg.isRead) {
+          existing.unreadCount++;
+        }
+      }
+
+      conversations = Array.from(conversationMap.values()).sort((a, b) =>
+        new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+      );
+    } catch (msgErr) {
+      // ProviderMessage table might not exist yet — return empty conversations
+      // but still return allProviders so the picker works.
+      console.warn("[provider-messages] Message query failed (non-blocking — allProviders still returned):", msgErr instanceof Error ? msgErr.message : msgErr);
+    }
 
     return NextResponse.json({ conversations, allProviders });
   } catch (error: unknown) {

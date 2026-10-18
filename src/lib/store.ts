@@ -78,6 +78,11 @@ interface AppState {
   triggerRefresh: () => void;
   preselectedRoom: PreselectedRoom | null;
   setPreselectedRoom: (r: PreselectedRoom | null) => void;
+  // Provider-to-provider chat: when the user clicks "Contact" on a provider
+  // card in the All Guesthouses page, we store the provider ID here so the
+  // Provider Messages page can open that conversation automatically.
+  preselectedChatProvider: string | null;
+  setPreselectedChatProvider: (id: string | null) => void;
   /** Which tab the Accommodation page should open on. */
   accommodationTab: "rooms" | "reservations" | "group-bookings";
   setAccommodationTab: (t: "rooms" | "reservations" | "group-bookings") => void;
@@ -186,6 +191,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   triggerRefresh: () => set((s) => ({ refreshKey: s.refreshKey + 1 })),
   preselectedRoom: null,
   setPreselectedRoom: (r) => set({ preselectedRoom: r }),
+  preselectedChatProvider: null,
+  setPreselectedChatProvider: (id) => set({ preselectedChatProvider: id }),
   accommodationTab: "rooms",
   setAccommodationTab: (t) => set({ accommodationTab: t }),
   // Joint session (Concurrent Dual Session)

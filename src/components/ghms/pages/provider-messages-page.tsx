@@ -61,7 +61,7 @@ function formatTime(iso: string): string {
 
 export default function ProviderMessagesPage() {
   const { t } = useTranslation();
-  const { refreshKey, setCurrentPage } = useAppStore();
+  const { refreshKey, setCurrentPage, preselectedChatProvider, setPreselectedChatProvider } = useAppStore();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [allProviders, setAllProviders] = useState<ProviderInfo[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
@@ -123,27 +123,21 @@ export default function ProviderMessagesPage() {
       await fetchThread(selectedProviderId);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send";
-      // Check if it's a navigation request (from ?with=...) — if so, use that
-      const urlParams = new URLSearchParams(window.location.search);
-      const fromParam = urlParams.get("from");
-      if (fromParam) {
-        setSelectedProviderId(fromParam);
-        fetchThread(fromParam);
-      }
+      console.error("[provider-messages] send error:", msg);
     } finally {
       setSending(false);
     }
   };
 
-  // Check for ?from=<providerId> query param (from "Contact" button on All Guesthouses)
+  // Check for preselected chat provider (from "Contact" button on All Guesthouses)
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const fromParam = urlParams.get("from");
-    if (fromParam && !selectedProviderId) {
-      setSelectedProviderId(fromParam);
-      fetchThread(fromParam);
+    if (preselectedChatProvider && !selectedProviderId) {
+      setSelectedProviderId(preselectedChatProvider);
+      fetchThread(preselectedChatProvider);
+      // Clear the preselected provider so it doesn't re-trigger on re-renders
+      setPreselectedChatProvider(null);
     }
-  }, []);
+  }, [preselectedChatProvider, selectedProviderId, fetchThread, setPreselectedChatProvider]);
 
   const handleStartNewChat = () => {
     if (!newChatProvider) return;

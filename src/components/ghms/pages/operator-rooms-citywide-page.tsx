@@ -76,7 +76,7 @@ const ROOM_TYPE_LABELS: Record<string, string> = {
 
 export default function OperatorRoomsCitywidePage() {
   const { t } = useTranslation();
-  const { refreshKey, setCurrentPage } = useAppStore();
+  const { refreshKey, setCurrentPage, setPreselectedChatProvider } = useAppStore();
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -244,13 +244,11 @@ export default function OperatorRoomsCitywidePage() {
                         className="h-7 gap-1 text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // Navigate to provider-messages page with ?from=<providerId>
+                          // Store the provider ID in the Zustand store so the
+                          // Provider Messages page can pick it up and open the
+                          // conversation automatically.
+                          setPreselectedChatProvider(p.id);
                           setCurrentPage("provider-messages");
-                          // Use setTimeout to let the page render first, then set the URL param
-                          setTimeout(() => {
-                            window.history.replaceState(null, "", `/provider-messages?from=${p.id}`);
-                            window.dispatchEvent(new Event("popstate"));
-                          }, 100);
                         }}
                       >
                         <MessageSquare className="h-3 w-3" />
