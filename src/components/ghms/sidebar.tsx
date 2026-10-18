@@ -118,13 +118,15 @@ const ALL_NAV_ITEMS: NavItem[] = [
     ],
   },
   { page: "users", label: "Account Management", icon: UserCog },
-  { page: "reports", label: "Reports", icon: BarChart3 },
   { page: "resources", label: "Stock Management", icon: Package },
   { page: "expenses", label: "Expenses", icon: Receipt },
   { page: "guest-communication", label: "Messages", icon: MessageSquare },
   { page: "staff-logs", label: "Staff Activity", icon: ScrollText },
   { page: "my-subscription", label: "Subscription", icon: CreditCard },
   { page: "settings", label: "Settings", icon: Settings },
+  // Reports moved to the bottom of the sidebar — it's a summary/analytics
+  // page that operators access less frequently than the operational pages.
+  { page: "reports", label: "Reports", icon: BarChart3 },
 ];
 
 const POLICE_NAV_ITEMS: NavItem[] = [
