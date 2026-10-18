@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronDown, ChevronUp, Search, Building2, BedDouble, RefreshCw, MapPin, Phone } from "lucide-react";
+import { ChevronDown, ChevronUp, Search, Building2, BedDouble, RefreshCw, MapPin, Phone, MessageSquare } from "lucide-react";
 
 interface Summary {
   totalProviders: number;
@@ -76,7 +76,7 @@ const ROOM_TYPE_LABELS: Record<string, string> = {
 
 export default function OperatorRoomsCitywidePage() {
   const { t } = useTranslation();
-  const { refreshKey } = useAppStore();
+  const { refreshKey, setCurrentPage } = useAppStore();
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -238,6 +238,24 @@ export default function OperatorRoomsCitywidePage() {
                       <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
                         {p.rooms.filter((r) => r.status === "AVAILABLE").length} available
                       </Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1 text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Navigate to provider-messages page with ?from=<providerId>
+                          setCurrentPage("provider-messages");
+                          // Use setTimeout to let the page render first, then set the URL param
+                          setTimeout(() => {
+                            window.history.replaceState(null, "", `/provider-messages?from=${p.id}`);
+                            window.dispatchEvent(new Event("popstate"));
+                          }, 100);
+                        }}
+                      >
+                        <MessageSquare className="h-3 w-3" />
+                        Contact
+                      </Button>
                       {isExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
                     </div>
                   </div>

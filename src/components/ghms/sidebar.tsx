@@ -261,6 +261,7 @@ const OWNER_EOD_NAV: NavItem = { page: "owner-eod", label: "End of Day", icon: F
 const SHIFT_HANDOVER_NAV: NavItem = { page: "shift-handover", label: "Shift Handover", icon: RefreshCwIcon };
 const MAINTENANCE_TICKETS_NAV: NavItem = { page: "maintenance-tickets", label: "Maintenance Tickets", icon: Wrench };
 const MULTI_PROVIDER_ROOMS_NAV: NavItem = { page: "operator-rooms-citywide", label: "All Guesthouses", icon: Building2 };
+const PROVIDER_MESSAGES_NAV: NavItem = { page: "provider-messages", label: "Provider Chat", icon: MessageSquare };
 
 // ── Helper: get nav items based on role ──
 function getNavItems(
@@ -296,7 +297,10 @@ function getNavItems(
   if (ownerEodEnabled) operatorItems.push(OWNER_EOD_NAV);
   if (shiftHandoverEnabled) operatorItems.push(SHIFT_HANDOVER_NAV);
   if (maintenanceTicketsEnabled) operatorItems.push(MAINTENANCE_TICKETS_NAV);
-  if (multiProviderRoomsEnabled) operatorItems.push(MULTI_PROVIDER_ROOMS_NAV);
+  if (multiProviderRoomsEnabled) {
+    operatorItems.push(MULTI_PROVIDER_ROOMS_NAV);
+    operatorItems.push(PROVIDER_MESSAGES_NAV);
+  }
 
   switch (user.role) {
     case "POLICE": {

@@ -175,6 +175,10 @@ model Provider {
   endOfDayReports  EndOfDayReport[]
   shiftHandovers   ShiftHandover[]
 
+  // Provider-to-provider messaging (for referrals when a guesthouse is full)
+  sentMessages     ProviderMessage[] @relation("MessageFrom")
+  receivedMessages ProviderMessage[] @relation("MessageTo")
+
   @@index([status])
   @@index([createdAt])
 }
@@ -642,6 +646,26 @@ model ShiftHandover {
   @@index([providerId])
   @@index([shiftDate])
   @@index([staffStartId])
+}
+
+// Provider-to-provider messaging — lets operators contact each other when
+// their guesthouse is full and they need to refer a guest. Each message is
+// from one provider to another. No real-time (polling-based).
+model ProviderMessage {
+  id             String   @id @default(cuid())
+  fromProviderId String
+  toProviderId   String
+  message        String
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  fromProvider Provider @relation("MessageFrom", fields: [fromProviderId], references: [id])
+  toProvider   Provider @relation("MessageTo", fields: [toProviderId], references: [id])
+
+  @@index([fromProviderId])
+  @@index([toProviderId])
+  @@index([isRead])
+  @@index([createdAt])
 }
 
 model Review {

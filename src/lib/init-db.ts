@@ -294,6 +294,14 @@ CREATE TABLE IF NOT EXISTS "ShiftHandover" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS "ProviderMessage" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "fromProviderId" TEXT NOT NULL,
+  "toProviderId" TEXT NOT NULL,
+  "message" TEXT NOT NULL,
+  "isRead" BOOLEAN NOT NULL DEFAULT false,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS "Review" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "guestId" TEXT NOT NULL,
@@ -811,6 +819,12 @@ DO $$ BEGIN ALTER TABLE "HousekeepingTask" ADD COLUMN "resolvedById" TEXT; EXCEP
 -- EndOfDayReport + ShiftHandover FK to Provider (idempotent)
 DO $$ BEGIN ALTER TABLE "EndOfDayReport" ADD CONSTRAINT "EndOfDayReport_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE RESTRICT ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN ALTER TABLE "ShiftHandover" ADD CONSTRAINT "ShiftHandover_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "Provider"("id") ON DELETE RESTRICT ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+CREATE INDEX IF NOT EXISTS "ProviderMessage_fromProviderId_idx" ON "ProviderMessage" ("fromProviderId");
+CREATE INDEX IF NOT EXISTS "ProviderMessage_toProviderId_idx" ON "ProviderMessage" ("toProviderId");
+CREATE INDEX IF NOT EXISTS "ProviderMessage_isRead_idx" ON "ProviderMessage" ("isRead");
+CREATE INDEX IF NOT EXISTS "ProviderMessage_createdAt_idx" ON "ProviderMessage" ("createdAt");
+DO $$ BEGIN ALTER TABLE "ProviderMessage" ADD CONSTRAINT "ProviderMessage_fromProviderId_fkey" FOREIGN KEY ("fromProviderId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "ProviderMessage" ADD CONSTRAINT "ProviderMessage_toProviderId_fkey" FOREIGN KEY ("toProviderId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
 CREATE INDEX IF NOT EXISTS "Review_guestId_idx" ON "Review" ("guestId");
 CREATE INDEX IF NOT EXISTS "Review_reservationId_idx" ON "Review" ("reservationId");
 CREATE INDEX IF NOT EXISTS "Review_createdAt_idx" ON "Review" ("createdAt");

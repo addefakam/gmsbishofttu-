@@ -518,6 +518,13 @@ export const apiPoliceRoomAvailability = () => req("/api/police-room-availabilit
 // feature flag. Returns 403 if the flag is OFF.
 export const apiOperatorRoomAvailability = () => req("/api/operator-room-availability");
 
+// Provider-to-provider messaging (in-app chat between guesthouse operators)
+export const apiGetProviderConversations = () => req("/api/provider-messages");
+export const apiGetProviderThread = (withProviderId: string) =>
+  req(`/api/provider-messages?with=${withProviderId}`);
+export const apiSendProviderMessage = (toProviderId: string, message: string) =>
+  req("/api/provider-messages", { method: "POST", body: JSON.stringify({ toProviderId, message }) });
+
 // Police suspend provider (with reason + notification to provider)
 export const apiPoliceSuspendProvider = (data: Record<string, unknown>) =>
   req("/api/police-suspend-provider", { method: "POST", body: JSON.stringify(data) });
