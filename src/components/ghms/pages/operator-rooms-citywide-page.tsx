@@ -81,6 +81,7 @@ export default function OperatorRoomsCitywidePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [availableOnly, setAvailableOnly] = useState(true); // default: show only available rooms
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -107,21 +108,34 @@ export default function OperatorRoomsCitywidePage() {
 
   const filteredProviders = useMemo(() => {
     if (!data?.providers) return [];
-    if (!search) return data.providers;
     const q = search.toLowerCase();
-    return data.providers.map((p) => {
-      const matchesName = p.name.toLowerCase().includes(q);
-      const matchingRooms = p.rooms.filter((r) =>
-        r.number.toLowerCase().includes(q) ||
-        r.name.toLowerCase().includes(q) ||
-        r.type.toLowerCase().includes(q)
-      );
-      if (matchesName || matchingRooms.length > 0) {
-        return { ...p, rooms: matchesName ? p.rooms : matchingRooms };
-      }
-      return null;
-    }).filter(Boolean) as ProviderStat[];
-  }, [data, search]);
+    return data.providers
+      .map((p) => {
+        // Step 1: filter rooms by status (available-only mode)
+        let rooms = availableOnly
+          ? p.rooms.filter((r) => r.status === "AVAILABLE")
+          : p.rooms;
+        // Step 2: filter rooms by search term (if any)
+        if (q) {
+          rooms = rooms.filter((r) =>
+            r.number.toLowerCase().includes(q) ||
+            r.name.toLowerCase().includes(q) ||
+            r.type.toLowerCase().includes(q)
+          );
+        }
+        // Step 3: if searching by guesthouse name, keep ALL status-filtered rooms
+        const matchesName = p.name.toLowerCase().includes(q);
+        if (matchesName && q) {
+          // Name matches — keep the availableOnly-filtered rooms (don't re-filter by room)
+          rooms = availableOnly
+            ? p.rooms.filter((r) => r.status === "AVAILABLE")
+            : p.rooms;
+        }
+        return { ...p, rooms };
+      })
+      // Step 4: drop providers with zero matching rooms
+      .filter((p) => p.rooms.length > 0);
+  }, [data, search, availableOnly]);
 
   if (loading) {
     return (
@@ -238,15 +252,30 @@ export default function OperatorRoomsCitywidePage() {
         <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Maintenance: {s.maintenanceRooms}</Badge>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-        <Input
-          placeholder={t("searchGuesthouse", { defaultValue: "Search by guesthouse name or room number..." })}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      {/* Search + Available-only toggle */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder={t("searchGuesthouse", { defaultValue: "Search by guesthouse name or room number..." })}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Button
+          variant={availableOnly ? "default" : "outline"}
+          size="sm"
+          onClick={() => setAvailableOnly(!availableOnly)}
+          className={`shrink-0 gap-2 ${availableOnly ? "bg-emerald-600 hover:bg-emerald-700" : ""}`}
+        >
+          <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${availableOnly ? "bg-emerald-500" : "bg-slate-300"}`}>
+            <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${availableOnly ? "translate-x-3.5" : "translate-x-0.5"}`} />
+          </span>
+          {availableOnly
+            ? t("availableOnly", { defaultValue: "Available Only" })
+            : t("showAll", { defaultValue: "Show All Rooms" })}
+        </Button>
       </div>
 
       {/* Provider list */}
@@ -256,7 +285,9 @@ export default function OperatorRoomsCitywidePage() {
             <CardContent className="py-8 text-center">
               <Building2 className="h-10 w-10 text-slate-300 mx-auto mb-2" />
               <p className="text-sm text-slate-500">
-                {t("noGuesthouses", { defaultValue: "No guesthouses found matching your search." })}
+                {availableOnly
+                  ? t("noAvailableRooms", { defaultValue: "No available rooms found. All rooms may be occupied or under maintenance. Toggle 'Show All Rooms' to see the full list." })
+                  : t("noGuesthouses", { defaultValue: "No guesthouses found matching your search." })}
               </p>
             </CardContent>
           </Card>
