@@ -191,64 +191,6 @@ export default function OperatorRoomsCitywidePage() {
         </Button>
       </div>
 
-      {/* Summary KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("guesthouses", { defaultValue: "Guesthouses" })}</p>
-                <p className="mt-1 text-2xl font-bold text-slate-900">{s.approvedProviders}</p>
-                <p className="text-[10px] text-slate-400">of {s.totalProviders} total</p>
-              </div>
-              <Building2 className="h-5 w-5 text-indigo-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("totalRooms", { defaultValue: "Total Rooms" })}</p>
-                <p className="mt-1 text-2xl font-bold text-slate-900">{s.totalRooms}</p>
-                <p className="text-[10px] text-slate-400">capacity: {s.totalCapacity}</p>
-              </div>
-              <BedDouble className="h-5 w-5 text-violet-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("utilization", { defaultValue: "Utilization" })}</p>
-                <p className="mt-1 text-2xl font-bold text-emerald-700">{s.utilizationRate}%</p>
-                <p className="text-[10px] text-slate-400">{s.occupiedRooms + s.reservedRooms} of {s.totalRooms}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("availableNow", { defaultValue: "Available Now" })}</p>
-                <p className="mt-1 text-2xl font-bold text-emerald-700">{s.availableRooms}</p>
-                <p className="text-[10px] text-slate-400">{s.maintenanceRooms} in maintenance</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Status legend */}
-      <div className="flex flex-wrap gap-2">
-        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Available: {s.availableRooms}</Badge>
-        <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200">Occupied: {s.occupiedRooms}</Badge>
-        <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200">Reserved: {s.reservedRooms}</Badge>
-        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Maintenance: {s.maintenanceRooms}</Badge>
-      </div>
-
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -260,7 +202,7 @@ export default function OperatorRoomsCitywidePage() {
         />
       </div>
 
-      {/* Provider list */}
+      {/* Provider list — show only available rooms, no per-provider stats */}
       <div className="space-y-3">
         {filteredProviders.length === 0 ? (
           <Card>
@@ -282,20 +224,19 @@ export default function OperatorRoomsCitywidePage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
                         <Building2 className="h-5 w-5" />
                       </div>
                       <div>
                         <CardTitle className="text-base">{p.name}</CardTitle>
-                        <CardDescription className="flex items-center gap-3 text-xs">
-                          {p.address && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{p.address}</span>}
-                          {p.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{p.phone}</span>}
+                        <CardDescription className="text-xs text-slate-500">
+                          {p.rooms.filter((r) => r.status === "AVAILABLE").length} available room(s)
                         </CardDescription>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-[10px]">
-                        {p.total} rooms · {p.utilizationRate}%
+                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
+                        {p.rooms.filter((r) => r.status === "AVAILABLE").length} available
                       </Badge>
                       {isExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
                     </div>
@@ -303,31 +244,21 @@ export default function OperatorRoomsCitywidePage() {
                 </CardHeader>
                 {isExpanded && (
                   <CardContent className="pt-0">
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">{p.available} available</Badge>
-                      <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px]">{p.occupied} occupied</Badge>
-                      <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px]">{p.reserved} reserved</Badge>
-                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">{p.maintenance} maintenance</Badge>
-                      <Badge variant="outline" className="text-[10px]">Avg: {p.avgPrice.toLocaleString()} ETB</Badge>
-                    </div>
                     {p.rooms.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-3">No rooms in this guesthouse.</p>
+                      <p className="text-xs text-slate-400 text-center py-3">No available rooms.</p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                         {p.rooms.map((r) => (
                           <div
                             key={r.id}
-                            className={`flex items-center justify-between rounded-lg border p-2.5 ${STATUS_COLORS[r.status] || "bg-slate-50 border-slate-200"}`}
+                            className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 p-2.5"
                           >
                             <div>
-                              <p className="text-sm font-semibold">{r.number}</p>
-                              <p className="text-[10px] opacity-70">
+                              <p className="text-sm font-semibold text-emerald-900">{r.number}</p>
+                              <p className="text-[10px] text-emerald-700/70">
                                 {ROOM_TYPE_LABELS[r.type] || r.type} · Floor {r.floor} · {r.pricePerNight.toLocaleString()} ETB
                               </p>
                             </div>
-                            <Badge variant="outline" className="text-[9px] bg-white/60">
-                              {r.status}
-                            </Badge>
                           </div>
                         ))}
                       </div>
