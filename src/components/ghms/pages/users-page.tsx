@@ -49,6 +49,7 @@ import {
   CalendarCheck,
   Sun,
   Sparkles,
+  Wrench,
   Bed,
   BarChart3,
   Star,
@@ -68,7 +69,7 @@ import {
 const PERMISSION_OPTIONS_RAW = [
   { value: "rooms", tKey: "permRooms", icon: Bed, color: "text-violet-600 bg-violet-50 border-violet-200" },
   { value: "reservations", tKey: "permReservations", icon: CalendarCheck, color: "text-blue-600 bg-blue-50 border-blue-200" },
-  { value: "housekeeping", tKey: "permHousekeeping", icon: Sparkles, color: "text-amber-600 bg-amber-50 border-amber-200" },
+  { value: "housekeeping", tKey: "permMaintenance", icon: Wrench, color: "text-amber-600 bg-amber-50 border-amber-200" },
   { value: "reports", tKey: "permReports", icon: BarChart3, color: "text-cyan-600 bg-cyan-50 border-cyan-200" },
   { value: "reviews", tKey: "permReviews", icon: Star, color: "text-yellow-600 bg-yellow-50 border-yellow-200" },
   { value: "notifications", tKey: "permNotifications", icon: Bell, color: "text-rose-600 bg-rose-50 border-rose-200" },
@@ -98,22 +99,24 @@ const emptyForm = {
   permissions: ["rooms", "reservations"] as string[],
 };
 
-// ── Map each permission to its sidebar page key + feature flag ──
+// ── Map each permission to its sidebar page key ──
 // Used to filter the permission options shown in the Add/Edit Staff dialog:
 //   - If the page is in `disabledPages` (hidden from operator sidebar), the
 //     permission is hidden.
-//   - If the corresponding feature flag is OFF, the permission is hidden.
-// null in either field means "no dependency" — always show.
-const PERM_PAGE_MAP: Record<string, { pageKey: string | null; flagKey: string | null }> = {
-  rooms:          { pageKey: "accommodation",  flagKey: null },
-  reservations:   { pageKey: "accommodation",  flagKey: null },
-  housekeeping:   { pageKey: null,            flagKey: "maintenanceTickets" },
-  reports:        { pageKey: "reports",       flagKey: null },
-  reviews:        { pageKey: null,            flagKey: null },
-  notifications:  { pageKey: null,            flagKey: null },
-  settings:       { pageKey: "settings",       flagKey: null },
-  staff_logs_view:{ pageKey: "staff-logs",     flagKey: null },
-  tasks:          { pageKey: null,            flagKey: null },
+//   - Feature flags are NOT used to hide permissions here — the sidebar
+//     already hides the page if the flag is off. The permission just controls
+//     whether STAFF can access the page IF it's visible.
+// null means "no page dependency" — always show.
+const PERM_PAGE_MAP: Record<string, { pageKey: string | null }> = {
+  rooms:           { pageKey: "accommodation" },
+  reservations:     { pageKey: "accommodation" },
+  housekeeping:     { pageKey: "maintenance-tickets" },
+  reports:          { pageKey: "reports" },
+  reviews:          { pageKey: null },
+  notifications:     { pageKey: null },
+  settings:         { pageKey: "settings" },
+  staff_logs_view:  { pageKey: "staff-logs" },
+  tasks:            { pageKey: null },
 };
 
 export default function UsersPage() {
@@ -127,21 +130,15 @@ export default function UsersPage() {
   });
 
   // ── Filter permission options based on Operator Features settings ──
-  // Only show permissions for features that are currently ENABLED:
-  //   1. If the feature's page is in `disabledPages` → hide
-  //   2. If the feature's flag in `ownerFeatureFlags` is false → hide
-  // disabledPages is null until fetched; treat null as "no restrictions"
-  // (show all) so the dialog isn't empty during the initial load.
+  // Only show permissions for pages that are NOT in disabledPages.
+  // Feature flags are NOT checked here — the sidebar already hides the
+  // page if the flag is off. The permission just controls whether STAFF
+  // can access the page IF it's visible to operators.
   const disabledSet = new Set(disabledPages || []);
   const visiblePermissions = PERMISSION_OPTIONS_RAW.filter((perm) => {
     const mapping = PERM_PAGE_MAP[perm.value];
-    if (!mapping) return true; // unknown permission — show by default
-    // Check if the page is disabled
+    if (!mapping) return true;
     if (mapping.pageKey && disabledSet.has(mapping.pageKey)) return false;
-    // Check if the feature flag is OFF
-    if (mapping.flagKey && ownerFeatureFlags) {
-      if (ownerFeatureFlags[mapping.flagKey] === false) return false;
-    }
     return true;
   });
   const [staff, setStaff] = useState<StaffUser[]>([]);

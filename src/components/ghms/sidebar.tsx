@@ -233,6 +233,7 @@ const PERMISSION_PAGE_MAP: Record<string, NavItem> = {
   settings: { page: "settings", label: "Settings", icon: Settings },
   reservations: { page: "accommodation", label: "Accommodation", icon: DoorOpen },
   guests: { page: "accommodation", label: "Accommodation", icon: DoorOpen },
+  housekeeping: { page: "maintenance-tickets", label: "Maintenance Tickets", icon: Wrench },
   staff_logs_view: { page: "staff-logs", label: "Staff Activity", icon: ScrollText },
   guest_communication_view: { page: "guest-communication", label: "Messages", icon: MessageSquare },
   group_bookings_view: { page: "accommodation", label: "Group Bookings", icon: Users, tab: "group-bookings" },
