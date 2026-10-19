@@ -7,8 +7,10 @@ import { logStaffActivity } from "@/lib/staff-log";
 export async function GET(req: NextRequest) {
   try {
     const auth = await getAuthContext(req);
-    // SUPERUSER cannot access the users list — use /api/owner-accounts instead
-    if (auth.role === "SUPERUSER") {
+    // SUPERUSER without providerId (system admin) cannot access the users list
+    // — use /api/owner-accounts instead. SUPERUSER-with-providerId (owners) and
+    // OPERATOR both manage their own staff accounts.
+    if (auth.role === "SUPERUSER" && !auth.providerId) {
       return NextResponse.json(
         { error: "Access denied. Use Owner Accounts to manage provider credentials." },
         { status: 403 }
@@ -79,9 +81,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (auth.role === "OPERATOR" && role !== "STAFF") {
+    // OPERATOR and SUPERUSER-with-providerId (both are guesthouse owners)
+    // can create STAFF accounts. They cannot create OPERATOR or SUPERUSER
+    // accounts (only system admins can do that via owner-accounts).
+    if ((auth.role === "OPERATOR" || (auth.role === "SUPERUSER" && auth.providerId)) && role !== "STAFF") {
       return NextResponse.json(
-        { error: "Operators are only permitted to manage and create Staff accounts" },
+        { error: "You can only create Staff accounts for your guesthouse." },
         { status: 403 }
       );
     }

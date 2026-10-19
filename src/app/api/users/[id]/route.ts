@@ -20,16 +20,18 @@ export async function PUT(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    if (auth.role === "OPERATOR") {
+    // OPERATOR and SUPERUSER-with-providerId (both are guesthouse owners)
+    // can only manage STAFF accounts in their own guesthouse.
+    if (auth.role === "OPERATOR" || (auth.role === "SUPERUSER" && auth.providerId)) {
       if (existing.role !== "STAFF") {
         return NextResponse.json(
-          { error: "Operators are only permitted to manage Staff accounts" },
+          { error: "You can only manage Staff accounts in your guesthouse." },
           { status: 403 }
         );
       }
       if (body.role && body.role !== "STAFF") {
         return NextResponse.json(
-          { error: "Operators cannot change user roles to non-Staff" },
+          { error: "You can only assign Staff role to users in your guesthouse." },
           { status: 403 }
         );
       }
@@ -110,9 +112,9 @@ export async function DELETE(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    if (auth.role === "OPERATOR" && existing.role !== "STAFF") {
+    if ((auth.role === "OPERATOR" || (auth.role === "SUPERUSER" && auth.providerId)) && existing.role !== "STAFF") {
       return NextResponse.json(
-        { error: "Operators are only permitted to delete Staff accounts" },
+        { error: "You can only delete Staff accounts in your guesthouse." },
         { status: 403 }
       );
     }
