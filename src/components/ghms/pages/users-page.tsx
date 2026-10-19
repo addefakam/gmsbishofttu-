@@ -96,14 +96,51 @@ const emptyForm = {
   permissions: ["rooms", "reservations"] as string[],
 };
 
+// ── Map each permission to its sidebar page key + feature flag ──
+// Used to filter the permission options shown in the Add/Edit Staff dialog:
+//   - If the page is in `disabledPages` (hidden from operator sidebar), the
+//     permission is hidden.
+//   - If the corresponding feature flag is OFF, the permission is hidden.
+// null in either field means "no dependency" — always show.
+const PERM_PAGE_MAP: Record<string, { pageKey: string | null; flagKey: string | null }> = {
+  rooms:          { pageKey: "accommodation",  flagKey: null },
+  reservations:   { pageKey: "accommodation",  flagKey: null },
+  housekeeping:   { pageKey: null,            flagKey: "maintenanceTickets" },
+  reports:        { pageKey: "reports",       flagKey: null },
+  reviews:        { pageKey: null,            flagKey: null },
+  notifications:  { pageKey: null,            flagKey: null },
+  settings:       { pageKey: "settings",       flagKey: null },
+  staff_logs_view:{ pageKey: "staff-logs",     flagKey: null },
+  tasks:          { pageKey: null,            flagKey: null },
+};
+
 export default function UsersPage() {
   const { t } = useTranslation("users");
-  const { refreshKey, currentUser } = useAppStore();
+  const { refreshKey, currentUser, disabledPages, ownerFeatureFlags } = useAppStore();
 
   // Build translated permission map
   const PERM_MAP: Record<string, { label: string; icon: React.ElementType; color: string }> = {};
   PERMISSION_OPTIONS_RAW.forEach((p) => {
     PERM_MAP[p.value] = { label: t(p.tKey), icon: p.icon, color: p.color };
+  });
+
+  // ── Filter permission options based on Operator Features settings ──
+  // Only show permissions for features that are currently ENABLED:
+  //   1. If the feature's page is in `disabledPages` → hide
+  //   2. If the feature's flag in `ownerFeatureFlags` is false → hide
+  // disabledPages is null until fetched; treat null as "no restrictions"
+  // (show all) so the dialog isn't empty during the initial load.
+  const disabledSet = new Set(disabledPages || []);
+  const visiblePermissions = PERMISSION_OPTIONS_RAW.filter((perm) => {
+    const mapping = PERM_PAGE_MAP[perm.value];
+    if (!mapping) return true; // unknown permission — show by default
+    // Check if the page is disabled
+    if (mapping.pageKey && disabledSet.has(mapping.pageKey)) return false;
+    // Check if the feature flag is OFF
+    if (mapping.flagKey && ownerFeatureFlags) {
+      if (ownerFeatureFlags[mapping.flagKey] === false) return false;
+    }
+    return true;
   });
   const [staff, setStaff] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -492,7 +529,7 @@ export default function UsersPage() {
                 {t("accessRightsHint")}
               </p>
               <div className="grid grid-cols-2 gap-2 pt-1">
-                {PERMISSION_OPTIONS_RAW.map((perm) => {
+                {visiblePermissions.map((perm) => {
                   const Icon = perm.icon;
                   const isChecked = form.permissions.includes(perm.value);
                   return (
