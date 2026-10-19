@@ -26,10 +26,10 @@ export async function GET(req: NextRequest) {
       if (providerFilter) where.providerId = providerFilter;
     } else if (auth.role === "OPERATOR" || (auth.role === "SUPERUSER" && auth.providerId)) {
       // OPERATOR and SUPERUSER-with-providerId (both are guesthouse owners)
-      // only see STAFF accounts they personally created.
+      // see ALL users in their guesthouse (STAFF + OPERATOR accounts).
+      // Previously filtered by createdBy + role=STAFF only — which hid
+      // OPERATOR accounts created by the system admin or other operators.
       where.providerId = providerId;
-      where.createdBy = auth.userId;
-      where.role = "STAFF";
     } else {
       where.providerId = providerId;
     }
@@ -82,14 +82,10 @@ export async function POST(req: NextRequest) {
     }
 
     // OPERATOR and SUPERUSER-with-providerId (both are guesthouse owners)
-    // can create STAFF accounts. They cannot create OPERATOR or SUPERUSER
-    // accounts (only system admins can do that via owner-accounts).
-    if ((auth.role === "OPERATOR" || (auth.role === "SUPERUSER" && auth.providerId)) && role !== "STAFF") {
-      return NextResponse.json(
-        { error: "You can only create Staff accounts for your guesthouse." },
-        { status: 403 }
-      );
-    }
+    // can create any role (STAFF, OPERATOR) within their own guesthouse.
+    // No restriction — the owner manages all accounts for their property.
+    // Only SUPERUSER (system admin without providerId) is blocked from
+    // this route (handled by the GET check above).
 
     // Hash the password before storing
     const hashedPassword = await hashPassword(password);
