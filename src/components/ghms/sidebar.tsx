@@ -285,12 +285,10 @@ function getNavItems(
   const multiProviderRoomsEnabled = ownerFeatureFlags?.multiProviderRooms === true;
 
   const operatorItems: NavItem[] = [...ALL_NAV_ITEMS];
-  // Owner Overview page is only for SUPERUSER-with-providerId (owners).
-  // OPERATOR + STAFF don't see it (they're not the business owner).
-  // We filter it out here for non-owner roles — the item remains in
-  // ALL_NAV_ITEMS but never reaches the sidebar render for operators.
-  if (user.role !== "SUPERUSER" || !user.providerId) {
-    // Remove the owner-overview item for non-owners
+  // Owner Overview page is for SUPERUSER-with-providerId (owners) AND OPERATOR.
+  // Both roles are "operators" of a guesthouse and should see the consolidated
+  // owner view. STAFF + system-admin SUPERUSER (no providerId) don't see it.
+  if ((user.role !== "SUPERUSER" && user.role !== "OPERATOR") || !user.providerId) {
     const idx = operatorItems.findIndex((i) => i.page === "owner-overview");
     if (idx >= 0) operatorItems.splice(idx, 1);
   }
