@@ -8,6 +8,8 @@ import {
   apiCreateUser,
   apiUpdateUser,
   apiDeleteUser,
+  apiGetDisabledPages,
+  apiGetOwnerFeatureFlags,
 } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -182,6 +184,22 @@ export default function UsersPage() {
   useEffect(() => {
     fetchStaff();
   }, [fetchStaff, refreshKey]);
+
+  // ── Fetch disabledPages + ownerFeatureFlags on mount if not loaded ──
+  // The sidebar also fetches these, but if the user navigates directly to
+  // the Users page (or the sidebar fetch hasn't completed yet), the store
+  // has null values and the permission filter shows ALL permissions.
+  // Fetching here ensures the Access Rights list is always up-to-date.
+  useEffect(() => {
+    if (useAppStore.getState().disabledPages === null) {
+      apiGetDisabledPages().then((pages) => useAppStore.getState().setDisabledPages(pages)).catch(() => {});
+    }
+    if (useAppStore.getState().ownerFeatureFlags === null) {
+      apiGetOwnerFeatureFlags()
+        .then((flags) => useAppStore.getState().setOwnerFeatureFlags(flags))
+        .catch(() => {});
+    }
+  }, []);
 
   // Filter staff by search
   const filteredStaff = staff.filter(
