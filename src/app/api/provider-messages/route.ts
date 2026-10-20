@@ -59,6 +59,22 @@ export async function GET(req: NextRequest) {
     const myProviderId = filter.providerId;
     const { searchParams } = new URL(req.url);
     const withProviderId = searchParams.get("with");
+    const unreadOnly = searchParams.get("unread");
+
+    // ── Unread count mode (for sidebar badge polling) ──
+    // Lightweight endpoint: returns just { unreadCount: N } so the sidebar
+    // can poll every 30s without fetching full conversations.
+    if (unreadOnly === "true") {
+      try {
+        const count = await db.providerMessage.count({
+          where: { toProviderId: myProviderId, isRead: false },
+        });
+        return NextResponse.json({ unreadCount: count });
+      } catch {
+        // Table might not exist — return 0
+        return NextResponse.json({ unreadCount: 0 });
+      }
+    }
 
     // ── Thread mode: fetch full conversation between two providers ──
     if (withProviderId) {

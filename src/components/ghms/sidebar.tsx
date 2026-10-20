@@ -52,7 +52,7 @@ import { useAppStore, type CurrentUser } from "@/lib/store";
 import { formatDaysRemaining, formatCycle } from "@/lib/subscription";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { POLICE_RANK_PERMISSIONS, RANK_BADGE_CLASSES, type PoliceRank } from "@/lib/police-permissions";
-import { apiLogout, apiGetDisabledPages, apiGetOwnerFeatureFlags } from "@/lib/api";
+import { apiLogout, apiGetDisabledPages, apiGetOwnerFeatureFlags, apiGetUnreadProviderMessages } from "@/lib/api";
 import LanguageSwitcher from "@/components/ghms/language-switcher";
 
 import { Button } from "@/components/ui/button";
@@ -81,6 +81,7 @@ interface NavItem {
   label: string;
   icon: React.ElementType;
   badge?: string;
+  badgeCount?: number; // dynamic count badge (e.g. unread messages)
   section?: string;
   // Optional: which tab inside the page should be pre-selected when this
   // item is clicked. Used by the 'Accommodation' parent's children
@@ -298,7 +299,7 @@ function getNavItems(
   if (maintenanceTicketsEnabled) operatorItems.push(MAINTENANCE_TICKETS_NAV);
   if (multiProviderRoomsEnabled) {
     operatorItems.push(MULTI_PROVIDER_ROOMS_NAV);
-    operatorItems.push(PROVIDER_MESSAGES_NAV);
+    operatorItems.push({ ...PROVIDER_MESSAGES_NAV, badgeCount: unreadProviderMessages });
   }
 
   switch (user.role) {
@@ -499,6 +500,14 @@ function NavItemButton({
             {t(item.badge)}
           </Badge>
         )}
+        {item.badgeCount != null && item.badgeCount > 0 && (
+          <Badge
+            variant="secondary"
+            className="h-5 min-w-[20px] items-center justify-center bg-indigo-600 px-1.5 text-[10px] font-bold text-white"
+          >
+            {item.badgeCount > 99 ? "99+" : item.badgeCount}
+          </Badge>
+        )}
         {hasChildren && onToggleExpand && (
           <ChevronDown
             onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
@@ -694,7 +703,7 @@ function SidebarContent({
   onToggleCollapse: () => void;
 }) {
   const { t } = useTranslation("sidebar");
-  const { jointSession, setJointLoginDialogOpen, subscription, disabledPages, ownerFeatureFlags, accommodationTab, setAccommodationTab } = useAppStore();
+  const { jointSession, setJointLoginDialogOpen, subscription, disabledPages, ownerFeatureFlags, accommodationTab, setAccommodationTab, unreadProviderMessages, setUnreadProviderMessages } = useAppStore();
 
   // ── Prevent flash of soon-to-be-hidden nav items ──
   // disabledPages starts as null (not yet fetched from the API).
@@ -1045,6 +1054,29 @@ export default function Sidebar() {
         .catch(() => setOwnerFeatureFlags({ ownerDashboard: true, endOfDayReport: true, shiftHandover: true, maintenanceTickets: true, multiProviderRooms: false }));
     }
   }, [mounted, currentUser, setDisabledPages, setOwnerFeatureFlags]);
+
+  // ── Poll for unread provider messages every 30s ──
+  // Only when multiProviderRooms flag is enabled (the chat feature is visible).
+  // Updates the unread count in the store so the sidebar badge shows.
+  React.useEffect(() => {
+    if (!mounted || !currentUser) return;
+    const role = currentUser.role;
+    const shouldPoll =
+      role === "OPERATOR" || (role === "SUPERUSER" && currentUser.providerId);
+    if (!shouldPoll) return;
+    // Only poll if the multiProviderRooms flag is on
+    const flags = useAppStore.getState().ownerFeatureFlags;
+    if (flags && flags.multiProviderRooms !== true) return;
+
+    const fetchUnread = () => {
+      apiGetUnreadProviderMessages()
+        .then((count) => setUnreadProviderMessages(count))
+        .catch(() => {});
+    };
+    fetchUnread(); // initial fetch
+    const interval = setInterval(fetchUnread, 30000); // poll every 30s
+    return () => clearInterval(interval);
+  }, [mounted, currentUser, setUnreadProviderMessages, ownerFeatureFlags?.multiProviderRooms]);
 
   if (!mounted || !currentUser) return null;
 

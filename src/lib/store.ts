@@ -83,6 +83,10 @@ interface AppState {
   // Provider Messages page can open that conversation automatically.
   preselectedChatProvider: string | null;
   setPreselectedChatProvider: (id: string | null) => void;
+  // Unread provider message count — polled by the sidebar every 30s to
+  // show a badge on the "Provider Chat" nav item.
+  unreadProviderMessages: number;
+  setUnreadProviderMessages: (n: number) => void;
   /** Which tab the Accommodation page should open on. */
   accommodationTab: "rooms" | "reservations" | "group-bookings";
   setAccommodationTab: (t: "rooms" | "reservations" | "group-bookings") => void;
@@ -193,6 +197,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setPreselectedRoom: (r) => set({ preselectedRoom: r }),
   preselectedChatProvider: null,
   setPreselectedChatProvider: (id) => set({ preselectedChatProvider: id }),
+  unreadProviderMessages: 0,
+  setUnreadProviderMessages: (n) => set({ unreadProviderMessages: n }),
   accommodationTab: "rooms",
   setAccommodationTab: (t) => set({ accommodationTab: t }),
   // Joint session (Concurrent Dual Session)

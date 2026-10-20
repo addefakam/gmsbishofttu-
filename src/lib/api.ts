@@ -525,6 +525,16 @@ export const apiGetProviderThread = (withProviderId: string) =>
 export const apiSendProviderMessage = (toProviderId: string, message: string) =>
   req("/api/provider-messages", { method: "POST", body: JSON.stringify({ toProviderId, message }) });
 
+// Get unread provider message count (for sidebar badge polling)
+export const apiGetUnreadProviderMessages = async (): Promise<number> => {
+  try {
+    const res = await req("/api/provider-messages?unread=true");
+    return Number(res?.unreadCount) || 0;
+  } catch {
+    return 0;
+  }
+};
+
 // Police suspend provider (with reason + notification to provider)
 export const apiPoliceSuspendProvider = (data: Record<string, unknown>) =>
   req("/api/police-suspend-provider", { method: "POST", body: JSON.stringify(data) });
