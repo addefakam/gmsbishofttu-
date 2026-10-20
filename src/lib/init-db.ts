@@ -933,7 +933,7 @@ async function execViaPg(sql: string, params?: unknown[]): Promise<void> {
 /** Execute DDL via Prisma $executeRawUnsafe — splits multi-statement SQL
  *  because Prisma's driver does NOT support multiple statements per call. */
 async function execViaPrisma(sql: string): Promise<void> {
-  const prisma = new PrismaClient({ log: ["warn", "error"], datasources: { db: { url: process.env.DATABASE_URL.split("?")[0] + "?connection_limit=1&pool_timeout=30&connect_timeout=30" } } });
+  const prisma = new PrismaClient({ log: ["warn", "error"] });
   try {
     // Extract individual executable statements.
     // Prisma $executeRawUnsafe cannot run DO $$ ... END $$ blocks,
@@ -1018,7 +1018,7 @@ async function runMigrationsOnly(): Promise<void> {
   }
   try {
     const { PrismaClient } = await import("@prisma/client");
-    const p = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL.split("?")[0] + "?connection_limit=1&pool_timeout=30&connect_timeout=30" } } });
+    const p = new PrismaClient();
     await p.$disconnect();
   } catch (enumErr) {
   }
@@ -1051,9 +1051,9 @@ export async function ensureDatabase(): Promise<void> {
     let usePg = true;
     let pgError: unknown = null;
 
-    // Build connection string — strip existing params, add our own.
-    // NO pgbouncer=true — it breaks Prisma's prepared statements.
-    let connectionString = process.env.DATABASE_URL.split("?")[0] + "?connection_limit=1&pool_timeout=30&connect_timeout=30";
+    // Use DATABASE_URL as-is for pg.Client. Neon's pooler endpoint already
+    // has the right connection params in the URL.
+    let connectionString = process.env.DATABASE_URL;
 
     // Strategy 1: Try using pg Client directly
     try {
@@ -1198,7 +1198,7 @@ export async function ensureDatabase(): Promise<void> {
     console.log("[init-db] Falling back to Prisma $executeRawUnsafe...");
     try {
       // First check if tables exist using Prisma raw query
-      const prisma = new PrismaClient({ log: ["warn", "error"], datasources: { db: { url: process.env.DATABASE_URL.split("?")[0] + "?connection_limit=1&pool_timeout=30&connect_timeout=30" } } });
+      const prisma = new PrismaClient({ log: ["warn", "error"] });
       try {
         const res: Array<{ ok: boolean }> = await prisma.$queryRawUnsafe(
           `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='User') as ok`
@@ -1246,7 +1246,7 @@ export async function ensureDatabase(): Promise<void> {
       console.log("[init-db] Indexes created via Prisma.");
 
       // Seed SUPERUSER via Prisma
-      const prisma2 = new PrismaClient({ log: ["warn", "error"], datasources: { db: { url: process.env.DATABASE_URL.split("?")[0] + "?connection_limit=1&pool_timeout=30&connect_timeout=30" } } });
+      const prisma2 = new PrismaClient({ log: ["warn", "error"] });
       try {
         const hashed = await bcrypt.hash("Admin@2024", 12);
         await prisma2.$executeRawUnsafe(
