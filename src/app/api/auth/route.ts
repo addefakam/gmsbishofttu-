@@ -38,9 +38,9 @@ export async function POST(req: NextRequest) {
         },
       });
     } catch (queryErr) {
-      // Database might be suspended (Neon free tier) — wait 3s and retry
-      console.warn("[auth] First query failed — retrying after 3s. Error:", queryErr instanceof Error ? queryErr.message : queryErr);
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      // Database might be suspended (Neon free tier) — wait 5s and retry
+      console.warn("[auth] First query failed — retrying after 5s. Error:", queryErr instanceof Error ? queryErr.message : queryErr);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
       try {
         user = await db.user.findUnique({
           where: { username },

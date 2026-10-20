@@ -4,6 +4,13 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // Neon's free tier auto-suspends after 5 min of inactivity. When a request
+  // comes in, Neon takes 5-10 seconds to wake up. Prisma's default connection
+  // timeout is 5s — not enough. We use directUrl with connection params that
+  // give Neon more time to wake up.
+  //   connection_limit=1 — serverless functions should use 1 connection
+  //   pool_timeout=30 — wait up to 30s for a connection from the pool
+  //   connect_timeout=30 — wait up to 30s for the initial TCP connection
   url      = env("DATABASE_URL")
 }
 
