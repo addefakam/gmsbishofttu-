@@ -8,6 +8,49 @@ import { todayStr } from "@/lib/reservation-maintenance";
 export const dynamic = "force-dynamic";
 
 /**
+ * Force-creates the EndOfDayReport table if it doesn't exist yet.
+ * Bypasses the _initDone cache in ensureDatabase().
+ */
+async function ensureEndOfDayReportTable(): Promise<void> {
+  try {
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "EndOfDayReport" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "reportDate" TEXT NOT NULL,
+        "providerId" TEXT NOT NULL,
+        "openingCash" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "cashPayments" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "cashRefunds" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "pettyCashExpenses" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "expectedCash" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "countedCash" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "discrepancy" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "telebirrPayments" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "cbePayments" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "cardPayments" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "totalPayments" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "checkins" INTEGER NOT NULL DEFAULT 0,
+        "checkouts" INTEGER NOT NULL DEFAULT 0,
+        "newReservations" INTEGER NOT NULL DEFAULT 0,
+        "cancellations" INTEGER NOT NULL DEFAULT 0,
+        "noShows" INTEGER NOT NULL DEFAULT 0,
+        "signedOffById" TEXT,
+        "signedOffAt" TIMESTAMP(3),
+        "closingShiftId" TEXT,
+        "notes" TEXT NOT NULL DEFAULT '',
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "EndOfDayReport_reportDate_providerId_key" UNIQUE ("reportDate", "providerId")
+      )
+    `);
+    try { await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "EndOfDayReport_providerId_idx" ON "EndOfDayReport" ("providerId")`); } catch {}
+    try { await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "EndOfDayReport_reportDate_idx" ON "EndOfDayReport" ("reportDate")`); } catch {}
+  } catch (err) {
+    console.warn("[owner-eod] ensureEndOfDayReportTable failed (non-blocking):", err instanceof Error ? err.message : err);
+  }
+}
+
+/**
  * GET /api/owner-eod?date=YYYY-MM-DD
  *
  * Returns the End-of-Day report for the given date (defaults to today).
@@ -17,6 +60,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: NextRequest) {
   try {
+    await ensureEndOfDayReportTable();
     await ensureNewTables();
     const auth = await getAuthContext(req);
     const filter = getProviderFilter(auth);
@@ -132,6 +176,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    await ensureEndOfDayReportTable();
     await ensureNewTables();
     const auth = await getAuthContext(req);
     const filter = getProviderFilter(auth);

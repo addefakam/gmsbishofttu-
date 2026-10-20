@@ -8,6 +8,38 @@ import { todayStr } from "@/lib/reservation-maintenance";
 export const dynamic = "force-dynamic";
 
 /**
+ * Force-creates the ShiftHandover table if it doesn't exist yet.
+ */
+async function ensureShiftHandoverTable(): Promise<void> {
+  try {
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "ShiftHandover" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "providerId" TEXT NOT NULL,
+        "shiftDate" TEXT NOT NULL,
+        "shiftType" TEXT NOT NULL DEFAULT 'DAY',
+        "staffStartId" TEXT NOT NULL,
+        "staffEndId" TEXT,
+        "openingCash" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "closingCash" DOUBLE PRECISION,
+        "discrepancy" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "handoverNotes" TEXT NOT NULL DEFAULT '',
+        "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "endedAt" TIMESTAMP(3),
+        "signedOffAt" TIMESTAMP(3),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    try { await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "ShiftHandover_providerId_idx" ON "ShiftHandover" ("providerId")`); } catch {}
+    try { await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "ShiftHandover_shiftDate_idx" ON "ShiftHandover" ("shiftDate")`); } catch {}
+    try { await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "ShiftHandover_staffStartId_idx" ON "ShiftHandover" ("staffStartId")`); } catch {}
+  } catch (err) {
+    console.warn("[shift-handover] ensureShiftHandoverTable failed (non-blocking):", err instanceof Error ? err.message : err);
+  }
+}
+
+/**
  * GET /api/shift-handover
  * Returns:
  *   - current: the active (not-yet-ended) shift for this provider, or null
@@ -17,6 +49,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: NextRequest) {
   try {
+    await ensureShiftHandoverTable();
     await ensureNewTables();
     const auth = await getAuthContext(req);
     const filter = getProviderFilter(auth);
@@ -69,6 +102,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    await ensureShiftHandoverTable();
     await ensureNewTables();
     const auth = await getAuthContext(req);
     const filter = getProviderFilter(auth);
