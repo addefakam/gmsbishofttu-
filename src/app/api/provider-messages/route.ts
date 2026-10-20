@@ -45,6 +45,33 @@ async function ensureProviderMessageTable(): Promise<void> {
  */
 export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    const withProviderId = searchParams.get("with");
+    const unreadOnly = searchParams.get("unread");
+
+    // ── Unread count mode (lightweight — NO table creation, NO ensureNewTables) ──
+    // This is called on page load by the sidebar. It must be FAST — no DDL
+    // statements, no migrations. If the ProviderMessage table doesn't exist
+    // yet, the count query will fail and we return 0.
+    if (unreadOnly === "true") {
+      const auth = await getAuthContext(req);
+      const filter = getProviderFilter(auth);
+      if (filter.isPolice || !filter.providerId) {
+        return NextResponse.json({ unreadCount: 0 });
+      }
+      try {
+        const count = await db.providerMessage.count({
+          where: { toProviderId: filter.providerId, isRead: false },
+        });
+        return NextResponse.json({ unreadCount: count });
+      } catch {
+        // Table doesn't exist yet — return 0 (no unread messages)
+        return NextResponse.json({ unreadCount: 0 });
+      }
+    }
+
+    // ── Full conversation/thread mode ──
+    // Only run table creation for the full mode (not the lightweight unread count)
     await ensureProviderMessageTable();
     await ensureNewTables();
     const auth = await getAuthContext(req);
@@ -57,24 +84,6 @@ export async function GET(req: NextRequest) {
     }
 
     const myProviderId = filter.providerId;
-    const { searchParams } = new URL(req.url);
-    const withProviderId = searchParams.get("with");
-    const unreadOnly = searchParams.get("unread");
-
-    // ── Unread count mode (for sidebar badge polling) ──
-    // Lightweight endpoint: returns just { unreadCount: N } so the sidebar
-    // can poll every 30s without fetching full conversations.
-    if (unreadOnly === "true") {
-      try {
-        const count = await db.providerMessage.count({
-          where: { toProviderId: myProviderId, isRead: false },
-        });
-        return NextResponse.json({ unreadCount: count });
-      } catch {
-        // Table might not exist — return 0
-        return NextResponse.json({ unreadCount: 0 });
-      }
-    }
 
     // ── Thread mode: fetch full conversation between two providers ──
     if (withProviderId) {

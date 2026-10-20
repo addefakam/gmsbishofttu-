@@ -1056,27 +1056,24 @@ export default function Sidebar() {
     }
   }, [mounted, currentUser, setDisabledPages, setOwnerFeatureFlags]);
 
-  // ── Poll for unread provider messages every 30s ──
-  // Only when multiProviderRooms flag is enabled (the chat feature is visible).
-  // Updates the unread count in the store so the sidebar badge shows.
+  // ── Fetch unread provider message count ONCE on mount ──
+  // (No polling — the Provider Chat page auto-refreshes its thread every 15s,
+  // which is enough for real-time chat. Polling every 30s from the sidebar
+  // was flooding Neon with requests, causing connection pool exhaustion and
+  // 'Can't reach database server' errors on warm Vercel instances.)
   React.useEffect(() => {
     if (!mounted || !currentUser) return;
     const role = currentUser.role;
-    const shouldPoll =
+    const shouldFetch =
       role === "OPERATOR" || (role === "SUPERUSER" && currentUser.providerId);
-    if (!shouldPoll) return;
-    // Only poll if the multiProviderRooms flag is on
+    if (!shouldFetch) return;
+    // Only fetch if the multiProviderRooms flag is on
     const flags = useAppStore.getState().ownerFeatureFlags;
     if (flags && flags.multiProviderRooms !== true) return;
 
-    const fetchUnread = () => {
-      apiGetUnreadProviderMessages()
-        .then((count) => setUnreadProviderMessages(count))
-        .catch(() => {});
-    };
-    fetchUnread(); // initial fetch
-    const interval = setInterval(fetchUnread, 30000); // poll every 30s
-    return () => clearInterval(interval);
+    apiGetUnreadProviderMessages()
+      .then((count) => setUnreadProviderMessages(count))
+      .catch(() => {});
   }, [mounted, currentUser, setUnreadProviderMessages, ownerFeatureFlags?.multiProviderRooms]);
 
   if (!mounted || !currentUser) return null;
