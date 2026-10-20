@@ -1025,7 +1025,7 @@ function SidebarContent({
 // ── Main Sidebar Component ──
 export default function Sidebar() {
   const { t } = useTranslation("sidebar");
-  const { currentUser, currentPage, setCurrentPage, setCurrentUser, sidebarOpen, setSidebarOpen, setDisabledPages, setOwnerFeatureFlags, setUnreadProviderMessages } =
+  const { currentUser, currentPage, setCurrentPage, setCurrentUser, sidebarOpen, setSidebarOpen, setDisabledPages, setOwnerFeatureFlags, setUnreadProviderMessages, ownerFeatureFlags } =
     useAppStore();
   const isMobile = useIsMobile();
   const mounted = useSyncExternalStore(
