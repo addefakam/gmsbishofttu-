@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureDatabase, resetInitFlag } from "@/lib/init-db";
 import { ensureOwnerTables } from "@/lib/ensure-tables";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
@@ -7,14 +6,15 @@ import { hashPassword, verifyPassword, createToken, type JWTPayload } from "@/li
 
 export async function POST(req: NextRequest) {
   try {
-    // Ensure the new owner feature tables exist BEFORE any Prisma query
-    // that touches the Provider model (which now has relations to these
-    // tables). Without this, the auth query crashes because Prisma tries
-    // to JOIN non-existent tables.
+    // Only ensure the 3 new owner feature tables exist — lightweight (< 3ms).
+    // Do NOT call ensureDatabase() here — it runs ~200 DDL statements and
+    // takes 5-10s on hosted PostgreSQL, which can exceed Vercel's 30s timeout
+    // and cause the 'Unexpected token A' error (serverless function crashes
+    // → returns plain-text error → frontend can't parse as JSON).
+    // The full migration runs on other routes via ensureNewTables() which
+    // has a setupDone cache. The auth route only needs the 3 new tables
+    // to exist so Prisma's Provider model relations don't crash.
     await ensureOwnerTables();
-    // Ensure database tables exist before any Prisma operation.
-    resetInitFlag();
-    await ensureDatabase();
 
     const body = await req.json();
     const { username, password } = body;
