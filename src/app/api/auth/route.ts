@@ -1,24 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureOwnerTables } from "@/lib/ensure-tables";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { hashPassword, verifyPassword, createToken, type JWTPayload } from "@/lib/auth-utils";
 
 export async function POST(req: NextRequest) {
   try {
-    // Try to ensure the 3 new owner feature tables exist — but DON'T block
-    // login if the database is temporarily unreachable (e.g. Neon's free
-    // tier auto-suspends after inactivity and takes 1-3s to wake up).
-    // The tables will be created by other routes (ensureNewTables) after
-    // the user successfully logs in and navigates to the dashboard.
-    // If they don't exist yet, the Prisma findUnique on User might fail —
-    // but we handle that in the catch block below with a retry.
-    try {
-      await ensureOwnerTables();
-    } catch (tableErr) {
-      console.warn("[auth] ensureOwnerTables failed (non-blocking — continuing with login):", tableErr instanceof Error ? tableErr.message : tableErr);
-    }
-
     const body = await req.json();
     const { username, password } = body;
 
@@ -31,7 +17,14 @@ export async function POST(req: NextRequest) {
 
     // Prisma query with retry — Neon's free tier auto-suspends the database
     // after inactivity. The first query attempt wakes up Neon but may fail
-    // with "Can't reach database server". A retry after 2s should succeed.
+    // with "Can't reach database server". Retry after 3s should succeed.
+    // NOTE: No ensureOwnerTables() or ensureDatabase() calls here — those
+    // were causing 30s+ latency (3 CREATE TABLE statements × 10s each on
+    // a suspended Neon instance = Vercel timeout → crash → 'Unexpected
+    // token A'). The Prisma findUnique with `provider: { select: ... }`
+    // does NOT join the new owner tables — it only accesses the Provider
+    // table directly. The new tables are created lazily by ensureNewTables()
+    // on other routes after login succeeds.
     let user = null;
     try {
       user = await db.user.findUnique({
@@ -45,19 +38,28 @@ export async function POST(req: NextRequest) {
         },
       });
     } catch (queryErr) {
-      // Database might be suspended (Neon free tier) — wait 2s and retry
-      console.warn("[auth] First query failed — retrying after 2s. Error:", queryErr instanceof Error ? queryErr.message : queryErr);
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      user = await db.user.findUnique({
-        where: { username },
-        select: {
-          id: true, username: true, name: true, role: true,
-          password: true, providerId: true, permissions: true,
-          policeRank: true,
-          jurisdictionType: true, subCity: true, woreda: true,
-          provider: { select: { id: true, name: true, status: true } },
-        },
-      });
+      // Database might be suspended (Neon free tier) — wait 3s and retry
+      console.warn("[auth] First query failed — retrying after 3s. Error:", queryErr instanceof Error ? queryErr.message : queryErr);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      try {
+        user = await db.user.findUnique({
+          where: { username },
+          select: {
+            id: true, username: true, name: true, role: true,
+            password: true, providerId: true, permissions: true,
+            policeRank: true,
+            jurisdictionType: true, subCity: true, woreda: true,
+            provider: { select: { id: true, name: true, status: true } },
+          },
+        });
+      } catch (retryErr) {
+        // Still failing — return a user-friendly error instead of crashing
+        console.error("[auth] Retry also failed:", retryErr instanceof Error ? retryErr.message : retryErr);
+        return NextResponse.json(
+          { error: "Database is starting up. Please wait a few seconds and try again." },
+          { status: 503 }
+        );
+      }
     }
 
     if (!user) {
