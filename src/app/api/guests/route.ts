@@ -13,26 +13,13 @@ import { ensureNewTables } from "@/lib/ensure-tables";
 // Prevents Vercel from caching stale guest data at the edge.
 export const dynamic = "force-dynamic";
 
-// Force-create the new owner feature tables so Prisma's Provider model
-// relations don't fail. Uses a module-level flag to only run ONCE per
-// cold start — subsequent requests skip the DDL statements entirely.
-let _ownerTablesEnsured = false;
-async function ensureOwnerTables(): Promise<void> {
-  if (_ownerTablesEnsured) return;
-  try {
-    await db.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "EndOfDayReport" ("id" TEXT NOT NULL PRIMARY KEY, "reportDate" TEXT NOT NULL, "providerId" TEXT NOT NULL, "openingCash" DOUBLE PRECISION NOT NULL DEFAULT 0, "cashPayments" DOUBLE PRECISION NOT NULL DEFAULT 0, "cashRefunds" DOUBLE PRECISION NOT NULL DEFAULT 0, "pettyCashExpenses" DOUBLE PRECISION NOT NULL DEFAULT 0, "expectedCash" DOUBLE PRECISION NOT NULL DEFAULT 0, "countedCash" DOUBLE PRECISION NOT NULL DEFAULT 0, "discrepancy" DOUBLE PRECISION NOT NULL DEFAULT 0, "telebirrPayments" DOUBLE PRECISION NOT NULL DEFAULT 0, "cbePayments" DOUBLE PRECISION NOT NULL DEFAULT 0, "cardPayments" DOUBLE PRECISION NOT NULL DEFAULT 0, "totalPayments" DOUBLE PRECISION NOT NULL DEFAULT 0, "checkins" INTEGER NOT NULL DEFAULT 0, "checkouts" INTEGER NOT NULL DEFAULT 0, "newReservations" INTEGER NOT NULL DEFAULT 0, "cancellations" INTEGER NOT NULL DEFAULT 0, "noShows" INTEGER NOT NULL DEFAULT 0, "signedOffById" TEXT, "signedOffAt" TIMESTAMP(3), "closingShiftId" TEXT, "notes" TEXT NOT NULL DEFAULT '', "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "EndOfDayReport_reportDate_providerId_key" UNIQUE ("reportDate", "providerId"))`);
-    await db.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ShiftHandover" ("id" TEXT NOT NULL PRIMARY KEY, "providerId" TEXT NOT NULL, "shiftDate" TEXT NOT NULL, "shiftType" TEXT NOT NULL DEFAULT 'DAY', "staffStartId" TEXT NOT NULL, "staffEndId" TEXT, "openingCash" DOUBLE PRECISION NOT NULL DEFAULT 0, "closingCash" DOUBLE PRECISION, "discrepancy" DOUBLE PRECISION NOT NULL DEFAULT 0, "handoverNotes" TEXT NOT NULL DEFAULT '', "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "endedAt" TIMESTAMP(3), "signedOffAt" TIMESTAMP(3), "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
-    await db.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ProviderMessage" ("id" TEXT NOT NULL PRIMARY KEY, "fromProviderId" TEXT NOT NULL, "toProviderId" TEXT NOT NULL, "message" TEXT NOT NULL, "isRead" BOOLEAN NOT NULL DEFAULT false, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
-    _ownerTablesEnsured = true;
-  } catch (err) {
-    console.warn("[guests] ensureOwnerTables failed (non-blocking):", err instanceof Error ? err.message : err);
-    _ownerTablesEnsured = true; // Don't retry on failure — let the API continue
-  }
-}
-
 export async function GET(req: NextRequest) {
   try {
-    await ensureOwnerTables();
+    // ensureNewTables() now internally calls ensureOwnerTables() which
+    // creates the 3 new owner feature tables (EndOfDayReport, ShiftHandover,
+    // ProviderMessage) on every call. This is critical because the Prisma
+    // Provider model has relations to these tables — any query touching
+    // Provider crashes if they don't exist.
     await ensureNewTables();
     const auth = await getAuthContext(req);
     const { isPolice, providerId } = getProviderFilter(auth);
