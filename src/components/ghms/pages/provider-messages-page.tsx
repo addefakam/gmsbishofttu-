@@ -134,6 +134,7 @@ export default function ProviderMessagesPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send";
       console.error("[provider-messages] send error:", msg);
+      toast.error(msg);
     } finally {
       setSending(false);
     }

@@ -6,6 +6,36 @@ import { ensureNewTables } from "@/lib/ensure-tables";
 export const dynamic = "force-dynamic";
 
 /**
+ * Force-creates the ProviderMessage table if it doesn't exist yet.
+ * Bypasses the _initDone cache in ensureDatabase() which can skip
+ * new table creation on Vercel warm instances.
+ */
+async function ensureProviderMessageTable(): Promise<void> {
+  try {
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "ProviderMessage" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "fromProviderId" TEXT NOT NULL,
+        "toProviderId" TEXT NOT NULL,
+        "message" TEXT NOT NULL,
+        "isRead" BOOLEAN NOT NULL DEFAULT false,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    // Indexes (idempotent)
+    try { await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "ProviderMessage_fromProviderId_idx" ON "ProviderMessage" ("fromProviderId")`); } catch {}
+    try { await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "ProviderMessage_toProviderId_idx" ON "ProviderMessage" ("toProviderId")`); } catch {}
+    try { await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "ProviderMessage_isRead_idx" ON "ProviderMessage" ("isRead")`); } catch {}
+    try { await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "ProviderMessage_createdAt_idx" ON "ProviderMessage" ("createdAt")`); } catch {}
+    // FKs (idempotent)
+    try { await db.$executeRawUnsafe(`ALTER TABLE "ProviderMessage" ADD CONSTRAINT "ProviderMessage_fromProviderId_fkey" FOREIGN KEY ("fromProviderId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE`); } catch {}
+    try { await db.$executeRawUnsafe(`ALTER TABLE "ProviderMessage" ADD CONSTRAINT "ProviderMessage_toProviderId_fkey" FOREIGN KEY ("toProviderId") REFERENCES "Provider"("id") ON DELETE CASCADE ON UPDATE CASCADE`); } catch {}
+  } catch (err) {
+    console.warn("[provider-messages] ensureProviderMessageTable failed (non-blocking):", err instanceof Error ? err.message : err);
+  }
+}
+
+/**
  * GET /api/provider-messages?with=<providerId>
  *
  * Without ?with= → returns a conversation list (all providers the current
@@ -15,6 +45,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: NextRequest) {
   try {
+    await ensureProviderMessageTable();
     await ensureNewTables();
     const auth = await getAuthContext(req);
     const filter = getProviderFilter(auth);
@@ -153,6 +184,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    await ensureProviderMessageTable();
     await ensureNewTables();
     const auth = await getAuthContext(req);
     const filter = getProviderFilter(auth);
