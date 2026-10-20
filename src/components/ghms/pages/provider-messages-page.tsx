@@ -90,13 +90,23 @@ export default function ProviderMessagesPage() {
     try {
       const res = await apiGetProviderThread(providerId);
       if (res?.messages) setMessages(res.messages);
+      else setMessages([]);
       if (res?.otherProvider) setOtherProvider(res.otherProvider);
-      // Refresh conversation list to update unread counts
+      else {
+        // API didn't return otherProvider — build it from allProviders list
+        const fromList = allProviders.find((p) => p.id === providerId);
+        if (fromList) setOtherProvider(fromList);
+        else setOtherProvider({ id: providerId, name: "Guesthouse", ownerName: "", phone: "" });
+      }
       fetchConversations();
-    } catch {
-      /* silent */
+    } catch (err) {
+      console.error("[provider-messages] fetchThread error:", err instanceof Error ? err.message : err);
+      // Even on error, try to show the thread with a fallback provider name
+      const fromList = allProviders.find((p) => p.id === providerId);
+      setOtherProvider(fromList || { id: providerId, name: "Guesthouse", ownerName: "", phone: "" });
+      setMessages([]);
     }
-  }, [fetchConversations]);
+  }, [fetchConversations, allProviders]);
 
   useEffect(() => {
     fetchConversations();
@@ -157,7 +167,10 @@ export default function ProviderMessagesPage() {
   }
 
   // ── Thread view (full conversation with one provider) ──
-  if (selectedProviderId && otherProvider) {
+  // Show the thread as soon as a provider is selected — even if otherProvider
+  // is still null (fetching). The header will show a fallback name.
+  if (selectedProviderId) {
+    const providerName = otherProvider?.name || "Guesthouse";
     return (
       <div className="flex flex-col h-[calc(100vh-80px)] p-4 md:p-6">
         {/* Thread header */}
@@ -169,8 +182,8 @@ export default function ProviderMessagesPage() {
             <Building2 className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-slate-900">{otherProvider.name}</h2>
-            {otherProvider.ownerName && <p className="text-xs text-slate-500">{otherProvider.ownerName}</p>}
+            <h2 className="text-sm font-bold text-slate-900">{providerName}</h2>
+            {otherProvider?.ownerName && <p className="text-xs text-slate-500">{otherProvider.ownerName}</p>}
           </div>
         </div>
 
