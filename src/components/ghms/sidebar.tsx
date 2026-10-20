@@ -270,6 +270,7 @@ function getNavItems(
   user: CurrentUser,
   disabledPages: string[] = [],
   ownerFeatureFlags: Record<string, boolean> | null = null,
+  unreadProviderMessages: number = 0,
 ): NavItem[] {
   const disabledSet = new Set(disabledPages);
 
@@ -717,7 +718,7 @@ function SidebarContent({
     (role === "SUPERUSER" && user.providerId);
   const waitingForDisabledPages = mightHaveDisabledPages && disabledPages === null;
 
-  const navItems = waitingForDisabledPages ? [] : getNavItems(user, disabledPages ?? [], ownerFeatureFlags);
+  const navItems = waitingForDisabledPages ? [] : getNavItems(user, disabledPages ?? [], ownerFeatureFlags, unreadProviderMessages);
   const roleBadgeClass = getRoleBadgeClass(user.role);
 
   // ── Expandable sidebar sections (currently only 'Accommodation') ──
