@@ -16,31 +16,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Prisma query with retry — Neon's free tier auto-suspends the database
-    // after inactivity. The first query attempt wakes up Neon but may fail
-    // with "Can't reach database server". Retry after 3s should succeed.
-    // NOTE: No ensureOwnerTables() or ensureDatabase() calls here — those
-    // were causing 30s+ latency (3 CREATE TABLE statements × 10s each on
-    // a suspended Neon instance = Vercel timeout → crash → 'Unexpected
-    // token A'). The Prisma findUnique with `provider: { select: ... }`
-    // does NOT join the new owner tables — it only accesses the Provider
-    // table directly. The new tables are created lazily by ensureNewTables()
-    // on other routes after login succeeds.
+    // after 5 min of inactivity. The first query attempt wakes up Neon but
+    // may fail with "Can't reach database server". Retry after 5s should
+    // succeed (Neon takes 5-10s to fully wake up).
+    //
+    // IMPORTANT: No ensureOwnerTables() or ensureDatabase() calls here.
+    // Those create separate PrismaClient instances (in init-db.ts) that
+    // each open their own connection — 4 extra connections × 5s timeout =
+    // 20s of latency before the actual login query can run.
     let user = null;
-    try {
-      user = await db.user.findUnique({
-        where: { username },
-        select: {
-          id: true, username: true, name: true, role: true,
-          password: true, providerId: true, permissions: true,
-          policeRank: true,
-          jurisdictionType: true, subCity: true, woreda: true,
-          provider: { select: { id: true, name: true, status: true } },
-        },
-      });
-    } catch (queryErr) {
-      // Database might be suspended (Neon free tier) — wait 5s and retry
-      console.warn("[auth] First query failed — retrying after 5s. Error:", queryErr instanceof Error ? queryErr.message : queryErr);
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         user = await db.user.findUnique({
           where: { username },
@@ -52,13 +37,22 @@ export async function POST(req: NextRequest) {
             provider: { select: { id: true, name: true, status: true } },
           },
         });
-      } catch (retryErr) {
-        // Still failing — return a user-friendly error instead of crashing
-        console.error("[auth] Retry also failed:", retryErr instanceof Error ? retryErr.message : retryErr);
-        return NextResponse.json(
-          { error: "Database is starting up. Please wait a few seconds and try again." },
-          { status: 503 }
-        );
+        break; // Success — exit the retry loop
+      } catch (queryErr) {
+        const errMsg = queryErr instanceof Error ? queryErr.message : String(queryErr);
+        console.warn(`[auth] Query attempt ${attempt}/3 failed:`, errMsg);
+        if (attempt < 3) {
+          // Wait before retrying: 3s, then 5s
+          const waitMs = attempt === 1 ? 3000 : 5000;
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+        } else {
+          // All 3 attempts failed — return a user-friendly error
+          console.error("[auth] All 3 query attempts failed.");
+          return NextResponse.json(
+            { error: "Database is starting up. Please wait a few seconds and try again." },
+            { status: 503 }
+          );
+        }
       }
     }
 

@@ -933,7 +933,7 @@ async function execViaPg(sql: string, params?: unknown[]): Promise<void> {
 /** Execute DDL via Prisma $executeRawUnsafe — splits multi-statement SQL
  *  because Prisma's driver does NOT support multiple statements per call. */
 async function execViaPrisma(sql: string): Promise<void> {
-  const prisma = new PrismaClient({ log: ["warn", "error"] });
+  const prisma = new PrismaClient({ log: ["warn", "error"], datasources: { db: { url: process.env.DATABASE_URL + (process.env.DATABASE_URL.includes("?") ? "&" : "?") + "connection_limit=1&pool_timeout=30&connect_timeout=30" + (process.env.DATABASE_URL.includes("neon.tech") ? "&pgbouncer=true" : "") } } });
   try {
     // Extract individual executable statements.
     // Prisma $executeRawUnsafe cannot run DO $$ ... END $$ blocks,
@@ -1018,7 +1018,7 @@ async function runMigrationsOnly(): Promise<void> {
   }
   try {
     const { PrismaClient } = await import("@prisma/client");
-    const p = new PrismaClient();
+    const p = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL + (process.env.DATABASE_URL.includes("?") ? "&" : "?") + "connection_limit=1&pool_timeout=30&connect_timeout=30" + (process.env.DATABASE_URL.includes("neon.tech") ? "&pgbouncer=true" : "") } } });
     await p.$disconnect();
   } catch (enumErr) {
   }
@@ -1051,9 +1051,21 @@ export async function ensureDatabase(): Promise<void> {
     let usePg = true;
     let pgError: unknown = null;
 
+    // Build connection string with Neon-compatible params
+    let connectionString = process.env.DATABASE_URL;
+    if (connectionString && !connectionString.includes("connect_timeout=")) {
+      const separator = connectionString.includes("?") ? "&" : "?";
+      connectionString = `${connectionString}${separator}connection_limit=1&pool_timeout=30&connect_timeout=30`;
+      if (connectionString.includes("-pooler") || connectionString.includes("neon.tech")) {
+        if (!connectionString.includes("pgbouncer=")) {
+          connectionString += "&pgbouncer=true";
+        }
+      }
+    }
+
     // Strategy 1: Try using pg Client directly
     try {
-      const client = new Client({ connectionString: process.env.DATABASE_URL });
+      const client = new Client({ connectionString, connectionTimeoutMillis: 30000 });
       await client.connect();
       console.log("[init-db] pg Client connected successfully.");
 
@@ -1194,7 +1206,7 @@ export async function ensureDatabase(): Promise<void> {
     console.log("[init-db] Falling back to Prisma $executeRawUnsafe...");
     try {
       // First check if tables exist using Prisma raw query
-      const prisma = new PrismaClient({ log: ["warn", "error"] });
+      const prisma = new PrismaClient({ log: ["warn", "error"], datasources: { db: { url: process.env.DATABASE_URL + (process.env.DATABASE_URL.includes("?") ? "&" : "?") + "connection_limit=1&pool_timeout=30&connect_timeout=30" + (process.env.DATABASE_URL.includes("neon.tech") ? "&pgbouncer=true" : "") } } });
       try {
         const res: Array<{ ok: boolean }> = await prisma.$queryRawUnsafe(
           `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='User') as ok`
@@ -1242,7 +1254,7 @@ export async function ensureDatabase(): Promise<void> {
       console.log("[init-db] Indexes created via Prisma.");
 
       // Seed SUPERUSER via Prisma
-      const prisma2 = new PrismaClient({ log: ["warn", "error"] });
+      const prisma2 = new PrismaClient({ log: ["warn", "error"], datasources: { db: { url: process.env.DATABASE_URL + (process.env.DATABASE_URL.includes("?") ? "&" : "?") + "connection_limit=1&pool_timeout=30&connect_timeout=30" + (process.env.DATABASE_URL.includes("neon.tech") ? "&pgbouncer=true" : "") } } });
       try {
         const hashed = await bcrypt.hash("Admin@2024", 12);
         await prisma2.$executeRawUnsafe(
