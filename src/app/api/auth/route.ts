@@ -6,15 +6,18 @@ import { hashPassword, verifyPassword, createToken, type JWTPayload } from "@/li
 
 export async function POST(req: NextRequest) {
   try {
-    // Only ensure the 3 new owner feature tables exist — lightweight (< 3ms).
-    // Do NOT call ensureDatabase() here — it runs ~200 DDL statements and
-    // takes 5-10s on hosted PostgreSQL, which can exceed Vercel's 30s timeout
-    // and cause the 'Unexpected token A' error (serverless function crashes
-    // → returns plain-text error → frontend can't parse as JSON).
-    // The full migration runs on other routes via ensureNewTables() which
-    // has a setupDone cache. The auth route only needs the 3 new tables
-    // to exist so Prisma's Provider model relations don't crash.
-    await ensureOwnerTables();
+    // Try to ensure the 3 new owner feature tables exist — but DON'T block
+    // login if the database is temporarily unreachable (e.g. Neon's free
+    // tier auto-suspends after inactivity and takes 1-3s to wake up).
+    // The tables will be created by other routes (ensureNewTables) after
+    // the user successfully logs in and navigates to the dashboard.
+    // If they don't exist yet, the Prisma findUnique on User might fail —
+    // but we handle that in the catch block below with a retry.
+    try {
+      await ensureOwnerTables();
+    } catch (tableErr) {
+      console.warn("[auth] ensureOwnerTables failed (non-blocking — continuing with login):", tableErr instanceof Error ? tableErr.message : tableErr);
+    }
 
     const body = await req.json();
     const { username, password } = body;
@@ -26,16 +29,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = await db.user.findUnique({
-      where: { username },
-      select: {
-        id: true, username: true, name: true, role: true,
-        password: true, providerId: true, permissions: true,
-        policeRank: true,
-        jurisdictionType: true, subCity: true, woreda: true,
-        provider: { select: { id: true, name: true, status: true } },
-      },
-    });
+    // Prisma query with retry — Neon's free tier auto-suspends the database
+    // after inactivity. The first query attempt wakes up Neon but may fail
+    // with "Can't reach database server". A retry after 2s should succeed.
+    let user = null;
+    try {
+      user = await db.user.findUnique({
+        where: { username },
+        select: {
+          id: true, username: true, name: true, role: true,
+          password: true, providerId: true, permissions: true,
+          policeRank: true,
+          jurisdictionType: true, subCity: true, woreda: true,
+          provider: { select: { id: true, name: true, status: true } },
+        },
+      });
+    } catch (queryErr) {
+      // Database might be suspended (Neon free tier) — wait 2s and retry
+      console.warn("[auth] First query failed — retrying after 2s. Error:", queryErr instanceof Error ? queryErr.message : queryErr);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      user = await db.user.findUnique({
+        where: { username },
+        select: {
+          id: true, username: true, name: true, role: true,
+          password: true, providerId: true, permissions: true,
+          policeRank: true,
+          jurisdictionType: true, subCity: true, woreda: true,
+          provider: { select: { id: true, name: true, status: true } },
+        },
+      });
+    }
 
     if (!user) {
       return NextResponse.json(
