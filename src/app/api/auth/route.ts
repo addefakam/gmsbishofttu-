@@ -105,9 +105,12 @@ export async function POST(req: NextRequest) {
     } catch (dbErr) {
       try { await client.end(); } catch {}
       const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
-      console.error("[auth] Database query failed:", msg);
+      console.error("[auth] Database error:", msg);
+      console.error("[auth] DATABASE_URL hostname:", (process.env.DATABASE_URL || "").split("@").pop()?.split("/")[0] || "unknown");
+      console.error("[auth] DATABASE_URL has sslmode:", (process.env.DATABASE_URL || "").includes("sslmode"));
+      // Return the actual error message (not the Amharic text) so we can debug
       return NextResponse.json(
-        { error: "ስርዓቱን ለመጠቀም እስከ ኦክቶበር 1/2026 ድረስ የሲስተም አድሚኑን ያነጋግሩ እና የደንበኝነት ክፍያውን ይክፈሉ::" },
+        { error: `DB Error: ${msg}` },
         { status: 503 }
       );
     }
