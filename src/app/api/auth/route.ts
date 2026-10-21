@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
           "latitude" DOUBLE PRECISION,
           "longitude" DOUBLE PRECISION,
           "status" TEXT NOT NULL DEFAULT 'PENDING',
+          "type" TEXT NOT NULL DEFAULT 'GUESTHOUSE',
           "subCity" TEXT NOT NULL DEFAULT '',
           "woreda" TEXT NOT NULL DEFAULT '',
           "bedCount" INTEGER,
@@ -85,31 +86,40 @@ export async function POST(req: NextRequest) {
           "suspensionReason" TEXT NOT NULL DEFAULT '',
           "suspendedAt" TIMESTAMP(3),
           "suspendedBy" TEXT NOT NULL DEFAULT '',
+          "certNumber" TEXT,
+          "certIssuedAt" TIMESTAMP(3),
+          "certIssuedBy" TEXT,
+          "certIssuedByName" TEXT,
           "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
           "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
       `);
       console.log("[auth] User + Provider tables ensured.");
 
-      // Add any missing columns to the User table
-      try {
-        await client.query(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "email" TEXT NOT NULL DEFAULT ''`);
-        await client.query(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phone" TEXT NOT NULL DEFAULT ''`);
-        // Add missing columns to Provider table
-        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "type" TEXT NOT NULL DEFAULT 'GUESTHOUSE'`);
-        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "subCity" TEXT NOT NULL DEFAULT ''`);
-        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "woreda" TEXT NOT NULL DEFAULT ''`);
-        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "bedCount" INTEGER`);
-        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "telegramChatId" TEXT`);
-        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspensionReason" TEXT NOT NULL DEFAULT ''`);
-        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspendedAt" TIMESTAMP(3)`);
-        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspendedBy" TEXT NOT NULL DEFAULT ''`);
-        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certNumber" TEXT`);
-        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certIssuedAt" TIMESTAMP(3)`);
-        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certIssuedBy" TEXT`);
-        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certIssuedByName" TEXT`);
-      } catch (alterErr) {
-        console.warn("[auth] ALTER TABLE failed (non-blocking):", alterErr instanceof Error ? alterErr.message : alterErr);
+      // Add any missing columns — each ALTER TABLE is independent (own try/catch)
+      // so if one fails, the rest still run.
+      const alterStatements = [
+        `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "email" TEXT NOT NULL DEFAULT ''`,
+        `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phone" TEXT NOT NULL DEFAULT ''`,
+        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "type" TEXT NOT NULL DEFAULT 'GUESTHOUSE'`,
+        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "subCity" TEXT NOT NULL DEFAULT ''`,
+        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "woreda" TEXT NOT NULL DEFAULT ''`,
+        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "bedCount" INTEGER`,
+        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "telegramChatId" TEXT`,
+        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspensionReason" TEXT NOT NULL DEFAULT ''`,
+        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspendedAt" TIMESTAMP(3)`,
+        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspendedBy" TEXT NOT NULL DEFAULT ''`,
+        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certNumber" TEXT`,
+        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certIssuedAt" TIMESTAMP(3)`,
+        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certIssuedBy" TEXT`,
+        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certIssuedByName" TEXT`,
+      ];
+      for (const sql of alterStatements) {
+        try {
+          await client.query(sql);
+        } catch {
+          // Individual ALTER TABLE failure is OK — column might already exist
+        }
       }
 
       // Seed admin user if not exists
