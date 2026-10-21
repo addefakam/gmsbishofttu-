@@ -70,6 +70,32 @@ export async function POST(req: NextRequest) {
         `);
         console.log("[auth] User table created.");
 
+        // Also create Provider table — the login query does a LEFT JOIN on it
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS "Provider" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "name" TEXT NOT NULL,
+            "ownerName" TEXT NOT NULL DEFAULT '',
+            "phone" TEXT NOT NULL DEFAULT '',
+            "email" TEXT NOT NULL DEFAULT '',
+            "address" TEXT NOT NULL DEFAULT '',
+            "licenseNo" TEXT NOT NULL DEFAULT '',
+            "latitude" DOUBLE PRECISION,
+            "longitude" DOUBLE PRECISION,
+            "status" TEXT NOT NULL DEFAULT 'PENDING',
+            "subCity" TEXT NOT NULL DEFAULT '',
+            "woreda" TEXT NOT NULL DEFAULT '',
+            "bedCount" INTEGER,
+            "telegramChatId" TEXT,
+            "suspensionReason" TEXT NOT NULL DEFAULT '',
+            "suspendedAt" TIMESTAMP(3),
+            "suspendedBy" TEXT NOT NULL DEFAULT '',
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        console.log("[auth] Provider table created.");
+
         // Create admin user with plain-text password (will be auto-hashed on first login)
         await client.query(`
           INSERT INTO "User" ("id", "username", "password", "name", "role", "permissions", "isActive", "createdAt", "updatedAt")
