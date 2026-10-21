@@ -66,6 +66,22 @@ export async function POST(req: NextRequest) {
           "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
       `);
+      // Drop and recreate Provider table — it was created without 'type'
+      // column by a previous deploy. CREATE TABLE IF NOT EXISTS won't add
+      // missing columns to an existing table, so we must drop + recreate.
+      // CASCADE drops dependent FK constraints too.
+      // Only do this if the 'type' column is missing.
+      const typeCheck = await client.query(`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'Provider' AND column_name = 'type'
+        ) as exists
+      `);
+      if (!typeCheck.rows[0]?.exists) {
+        console.log("[auth] Provider table missing 'type' column. Dropping + recreating...");
+        await client.query(`DROP TABLE IF EXISTS "Provider" CASCADE`);
+      }
+
       await client.query(`
         CREATE TABLE IF NOT EXISTS "Provider" (
           "id" TEXT NOT NULL PRIMARY KEY,
