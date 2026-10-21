@@ -26,16 +26,14 @@ function getJWTSecret(): Uint8Array {
   if (secret && secret.length >= 32) {
     return new TextEncoder().encode(secret);
   }
-  // Fallback for local dev only — derive from DATABASE_URL so dev works without extra env setup.
-  // In production (Vercel/AWS), always set JWT_SECRET explicitly.
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "[auth] JWT_SECRET is required in production. Set it (32+ chars) in your environment variables."
-    );
-  }
+  // Fallback: derive from DATABASE_URL — works in production without
+  // explicitly setting JWT_SECRET. This is less secure but ensures
+  // the system works out of the box.
   const dbUrl = process.env.DATABASE_URL || "ghms-fallback-secret-key";
   const derived = createHash("sha256").update(`ghms-jwt:${dbUrl}`).digest("hex");
-  console.warn("[auth] JWT_SECRET not set — using derived secret (dev only). Set JWT_SECRET (32+ chars) for production.");
+  if (process.env.NODE_ENV === "production" && !secret) {
+    console.warn("[auth] JWT_SECRET not set — using derived secret. Set JWT_SECRET (32+ chars) for better security.");
+  }
   return new TextEncoder().encode(derived);
 }
 

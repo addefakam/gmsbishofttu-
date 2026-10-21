@@ -231,7 +231,21 @@ export async function POST(req: NextRequest) {
       });
     } catch {}
 
-    return NextResponse.json(responseData);
+    // Set token as httpOnly cookie — the server reads the JWT from this
+    // cookie on ALL subsequent API requests (via getAuthContext).
+    // Without this, the user is redirected back to login after a
+    // successful login because the next API call (e.g. /api/dashboard)
+    // can't find the token.
+    const response = NextResponse.json(responseData);
+    response.cookies.set("ghms_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 24 * 60 * 60, // 24 hours
+      path: "/",
+    });
+
+    return response;
   } catch (error: unknown) {
     console.error("[auth] Login error:", error);
     const message = error instanceof Error ? error.message : "Login failed";
