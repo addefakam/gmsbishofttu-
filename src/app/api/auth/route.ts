@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAudit } from "@/lib/audit";
 import { hashPassword, verifyPassword, createToken, type JWTPayload } from "@/lib/auth-utils";
+import { ensureNewTables } from "@/lib/ensure-tables";
 
 // Detect if SSL is needed based on DATABASE_URL
 function needsSsl(): boolean {
@@ -145,6 +146,18 @@ export async function POST(req: NextRequest) {
         ON CONFLICT ("username") DO NOTHING
       `);
       console.log("[auth] Admin user ensured.");
+
+      // Run the FULL database migration (creates ALL 30+ tables with ALL
+      // columns). This runs via init-db.ts which uses pg.Client with SSL.
+      // This ensures that by the time login completes, ALL tables exist
+      // with ALL columns — so subsequent API calls (e.g. provider.create)
+      // don't fail with 'column does not exist'.
+      try {
+        await ensureNewTables();
+        console.log("[auth] Full database migration completed.");
+      } catch (migErr) {
+        console.warn("[auth] Migration failed (non-blocking — will retry on next request):", migErr instanceof Error ? migErr.message : migErr);
+      }
 
       // Query the user
       const result = await client.query(
