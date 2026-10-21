@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
           "username" TEXT NOT NULL UNIQUE,
           "password" TEXT NOT NULL,
           "name" TEXT NOT NULL DEFAULT '',
+          "email" TEXT NOT NULL DEFAULT '',
+          "phone" TEXT NOT NULL DEFAULT '',
           "role" TEXT NOT NULL DEFAULT 'STAFF',
           "permissions" TEXT NOT NULL DEFAULT '["reservations","guests"]',
           "policeRank" TEXT NOT NULL DEFAULT '',
@@ -88,6 +90,15 @@ export async function POST(req: NextRequest) {
         )
       `);
       console.log("[auth] User + Provider tables ensured.");
+
+      // Add any missing columns to the User table (in case it was
+      // created by a previous partial deploy without email/phone)
+      try {
+        await client.query(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "email" TEXT NOT NULL DEFAULT ''`);
+        await client.query(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phone" TEXT NOT NULL DEFAULT ''`);
+      } catch (alterErr) {
+        console.warn("[auth] ALTER TABLE User failed (non-blocking):", alterErr instanceof Error ? alterErr.message : alterErr);
+      }
 
       // Seed admin user if not exists
       await client.query(`
