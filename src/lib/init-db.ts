@@ -1051,13 +1051,22 @@ export async function ensureDatabase(): Promise<void> {
     let usePg = true;
     let pgError: unknown = null;
 
-    // Use DATABASE_URL as-is for pg.Client. Neon's pooler endpoint already
-    // has the right connection params in the URL.
+    // Use DATABASE_URL as-is for pg.Client.
     let connectionString = process.env.DATABASE_URL;
+    // Detect if SSL is needed (Supabase, Neon, and other cloud providers)
+    const needsSsl = connectionString && (
+      connectionString.includes("supabase.co") ||
+      connectionString.includes("neon.tech") ||
+      connectionString.includes("sslmode=require")
+    );
 
     // Strategy 1: Try using pg Client directly
     try {
-      const client = new Client({ connectionString, connectionTimeoutMillis: 30000 });
+      const client = new Client({
+        connectionString,
+        connectionTimeoutMillis: 30000,
+        ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+      });
       await client.connect();
       console.log("[init-db] pg Client connected successfully.");
 

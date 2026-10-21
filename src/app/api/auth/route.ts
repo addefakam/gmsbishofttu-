@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAudit } from "@/lib/audit";
 import { hashPassword, verifyPassword, createToken, type JWTPayload } from "@/lib/auth-utils";
-import { ensureNewTables } from "@/lib/ensure-tables";
+
+// Detect if SSL is needed based on DATABASE_URL
+function needsSsl(): boolean {
+  const url = process.env.DATABASE_URL || "";
+  return url.includes("supabase.co") || url.includes("neon.tech") || url.includes("sslmode=require");
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,28 +20,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // First: ensure all tables exist (creates them if this is a fresh database)
-    // This is critical for Supabase — the database starts empty.
-    try {
-      await ensureNewTables();
-    } catch (tableErr) {
-      console.warn("[auth] ensureNewTables failed:", tableErr instanceof Error ? tableErr.message : tableErr);
-    }
-
-    // Use raw pg.Client for the login query — more reliable than Prisma
-    // for the initial connection to a fresh database.
+    // Use raw pg.Client — more reliable than Prisma for fresh databases
     const { Client } = await import("pg");
-
-    // Build connection string — handle @ in password by URL-encoding
-    let connStr = process.env.DATABASE_URL || "";
-    // pg.Client handles connection strings natively, no URL-encoding needed
-
     const client = new Client({
-      connectionString: connStr,
+      connectionString: process.env.DATABASE_URL,
       connectionTimeoutMillis: 30000,
-      ssl: connStr.includes("supabase.co") || connStr.includes("neon.tech")
-        ? { rejectUnauthorized: false }
-        : undefined,
+      ssl: needsSsl() ? { rejectUnauthorized: false } : undefined,
     });
 
     let user: {
@@ -44,11 +33,12 @@ export async function POST(req: NextRequest) {
       password: string; providerId: string | null; permissions: string;
       policeRank: string;
       jurisdictionType: string; subCity: string; woreda: string;
-      providerId2: string | null; providerName: string | null; providerStatus: string | null;
+      providerName: string | null; providerStatus: string | null;
     } | null = null;
 
     try {
       await client.connect();
+      console.log("[auth] Connected to database successfully.");
 
       // Check if User table exists
       const tableCheck = await client.query(
@@ -56,14 +46,37 @@ export async function POST(req: NextRequest) {
       );
 
       if (!tableCheck.rows[0]?.exists) {
-        // Table doesn't exist — ensureNewTables should have created it,
-        // but if it failed, return the error message
-        await client.end();
-        console.error("[auth] User table does not exist. ensureNewTables may have failed.");
-        return NextResponse.json(
-          { error: "System is being set up. Please try again in 30 seconds." },
-          { status: 503 }
-        );
+        // User table doesn't exist — create it + seed admin user
+        console.log("[auth] User table not found. Creating tables...");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS "User" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "username" TEXT NOT NULL UNIQUE,
+            "password" TEXT NOT NULL,
+            "name" TEXT NOT NULL DEFAULT '',
+            "role" TEXT NOT NULL DEFAULT 'STAFF',
+            "permissions" TEXT NOT NULL DEFAULT '["reservations","guests"]',
+            "policeRank" TEXT NOT NULL DEFAULT '',
+            "isActive" BOOLEAN NOT NULL DEFAULT true,
+            "lastLogin" TIMESTAMP(3),
+            "providerId" TEXT,
+            "createdBy" TEXT,
+            "jurisdictionType" TEXT NOT NULL DEFAULT 'CITY',
+            "subCity" TEXT NOT NULL DEFAULT '',
+            "woreda" TEXT NOT NULL DEFAULT '',
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        console.log("[auth] User table created.");
+
+        // Create admin user with plain-text password (will be auto-hashed on first login)
+        await client.query(`
+          INSERT INTO "User" ("id", "username", "password", "name", "role", "permissions", "isActive", "createdAt", "updatedAt")
+          VALUES ('admin-001', 'admin', 'Admin@2024', 'System Administrator', 'SUPERUSER', '[]', true, NOW(), NOW())
+          ON CONFLICT ("username") DO NOTHING
+        `);
+        console.log("[auth] Admin user created.");
       }
 
       // Query the user
@@ -71,7 +84,7 @@ export async function POST(req: NextRequest) {
         `SELECT u."id", u."username", u."name", u."role", u."password",
                 u."providerId", u."permissions", u."policeRank",
                 u."jurisdictionType", u."subCity", u."woreda",
-                p."id" AS "providerId2", p."name" AS "providerName", p."status" AS "providerStatus"
+                p."name" AS "providerName", p."status" AS "providerStatus"
          FROM "User" u
          LEFT JOIN "Provider" p ON p."id" = u."providerId"
          WHERE u."username" = $1
@@ -123,9 +136,7 @@ export async function POST(req: NextRequest) {
           const c = new Client({
             connectionString: process.env.DATABASE_URL,
             connectionTimeoutMillis: 30000,
-            ssl: (process.env.DATABASE_URL || "").includes("supabase.co") || (process.env.DATABASE_URL || "").includes("neon.tech")
-              ? { rejectUnauthorized: false }
-              : undefined,
+            ssl: needsSsl() ? { rejectUnauthorized: false } : undefined,
           });
           await c.connect();
           await c.query(`UPDATE "User" SET "password" = $1 WHERE "id" = $2`, [hashed, user!.id]);
@@ -136,7 +147,7 @@ export async function POST(req: NextRequest) {
 
     const policeRank = user.policeRank || "";
 
-    // Check provider approval
+    // Check provider approval — skip if no providerId (system admin)
     if (user.role !== "POLICE" && user.providerId) {
       if (!user.providerStatus || user.providerStatus !== "APPROVED") {
         return NextResponse.json(
