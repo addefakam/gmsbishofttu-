@@ -921,7 +921,13 @@ export function resetInitFlag(): void {
 
 /** Execute SQL via raw pg Client */
 async function execViaPg(sql: string, params?: unknown[]): Promise<void> {
-  const client = new Client({ connectionString: process.env.DATABASE_URL! });
+  const url = process.env.DATABASE_URL || "";
+  const needsSsl = url.includes("supabase.co") || url.includes("neon.tech") || url.includes("sslmode=require");
+  const client = new Client({
+    connectionString: url,
+    connectionTimeoutMillis: 30000,
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+  });
   try {
     await client.connect();
     await client.query(sql, params);
