@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAudit } from "@/lib/audit";
 import { hashPassword, verifyPassword, createToken, type JWTPayload } from "@/lib/auth-utils";
+import { ensureNewTables } from "@/lib/ensure-tables";
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,13 +15,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Use raw pg.Client instead of Prisma — Prisma's connection pool
-    // was failing on Neon's suspended instances. pg.Client with
-    // connectionTimeoutMillis=30000 gives Neon enough time to wake up.
+    // First: ensure all tables exist (creates them if this is a fresh database)
+    // This is critical for Supabase — the database starts empty.
+    try {
+      await ensureNewTables();
+    } catch (tableErr) {
+      console.warn("[auth] ensureNewTables failed:", tableErr instanceof Error ? tableErr.message : tableErr);
+    }
+
+    // Use raw pg.Client for the login query — more reliable than Prisma
+    // for the initial connection to a fresh database.
     const { Client } = await import("pg");
+
+    // Build connection string — handle @ in password by URL-encoding
+    let connStr = process.env.DATABASE_URL || "";
+    // pg.Client handles connection strings natively, no URL-encoding needed
+
     const client = new Client({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: connStr,
       connectionTimeoutMillis: 30000,
+      ssl: connStr.includes("supabase.co") || connStr.includes("neon.tech")
+        ? { rejectUnauthorized: false }
+        : undefined,
     });
 
     let user: {
@@ -34,8 +50,23 @@ export async function POST(req: NextRequest) {
     try {
       await client.connect();
 
-      // Raw SQL query — no Prisma relation resolution, no JOINs to new tables.
-      // This bypasses the entire Prisma client and connects directly to Postgres.
+      // Check if User table exists
+      const tableCheck = await client.query(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'User') as exists`
+      );
+
+      if (!tableCheck.rows[0]?.exists) {
+        // Table doesn't exist — ensureNewTables should have created it,
+        // but if it failed, return the error message
+        await client.end();
+        console.error("[auth] User table does not exist. ensureNewTables may have failed.");
+        return NextResponse.json(
+          { error: "System is being set up. Please try again in 30 seconds." },
+          { status: 503 }
+        );
+      }
+
+      // Query the user
       const result = await client.query(
         `SELECT u."id", u."username", u."name", u."role", u."password",
                 u."providerId", u."permissions", u."policeRank",
@@ -59,7 +90,6 @@ export async function POST(req: NextRequest) {
       user = result.rows[0] as typeof user;
       await client.end();
     } catch (dbErr) {
-      // Connection failed — try to close the client
       try { await client.end(); } catch {}
       const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
       console.error("[auth] Database query failed:", msg);
@@ -90,7 +120,13 @@ export async function POST(req: NextRequest) {
       hashPassword(password).then(async (hashed) => {
         try {
           const { Client } = await import("pg");
-          const c = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 30000 });
+          const c = new Client({
+            connectionString: process.env.DATABASE_URL,
+            connectionTimeoutMillis: 30000,
+            ssl: (process.env.DATABASE_URL || "").includes("supabase.co") || (process.env.DATABASE_URL || "").includes("neon.tech")
+              ? { rejectUnauthorized: false }
+              : undefined,
+          });
           await c.connect();
           await c.query(`UPDATE "User" SET "password" = $1 WHERE "id" = $2`, [hashed, user!.id]);
           await c.end();
@@ -152,7 +188,6 @@ export async function POST(req: NextRequest) {
       token,
     };
 
-    // Log the login
     try {
       logAudit({
         req,
