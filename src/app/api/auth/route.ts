@@ -91,13 +91,25 @@ export async function POST(req: NextRequest) {
       `);
       console.log("[auth] User + Provider tables ensured.");
 
-      // Add any missing columns to the User table (in case it was
-      // created by a previous partial deploy without email/phone)
+      // Add any missing columns to the User table
       try {
         await client.query(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "email" TEXT NOT NULL DEFAULT ''`);
         await client.query(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phone" TEXT NOT NULL DEFAULT ''`);
+        // Add missing columns to Provider table
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "type" TEXT NOT NULL DEFAULT 'GUESTHOUSE'`);
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "subCity" TEXT NOT NULL DEFAULT ''`);
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "woreda" TEXT NOT NULL DEFAULT ''`);
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "bedCount" INTEGER`);
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "telegramChatId" TEXT`);
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspensionReason" TEXT NOT NULL DEFAULT ''`);
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspendedAt" TIMESTAMP(3)`);
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspendedBy" TEXT NOT NULL DEFAULT ''`);
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certNumber" TEXT`);
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certIssuedAt" TIMESTAMP(3)`);
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certIssuedBy" TEXT`);
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certIssuedByName" TEXT`);
       } catch (alterErr) {
-        console.warn("[auth] ALTER TABLE User failed (non-blocking):", alterErr instanceof Error ? alterErr.message : alterErr);
+        console.warn("[auth] ALTER TABLE failed (non-blocking):", alterErr instanceof Error ? alterErr.message : alterErr);
       }
 
       // Seed admin user if not exists
