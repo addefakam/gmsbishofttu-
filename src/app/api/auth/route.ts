@@ -40,70 +40,62 @@ export async function POST(req: NextRequest) {
       await client.connect();
       console.log("[auth] Connected to database successfully.");
 
-      // Check if User table exists
-      const tableCheck = await client.query(
-        `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'User') as exists`
-      );
+      // ALWAYS create both tables — CREATE TABLE IF NOT EXISTS is a no-op
+      // if the table already exists. Don't gate on a table existence check
+      // — if User exists but Provider doesn't (partial state from a
+      // previous failed attempt), the JOIN query will fail.
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "User" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "username" TEXT NOT NULL UNIQUE,
+          "password" TEXT NOT NULL,
+          "name" TEXT NOT NULL DEFAULT '',
+          "role" TEXT NOT NULL DEFAULT 'STAFF',
+          "permissions" TEXT NOT NULL DEFAULT '["reservations","guests"]',
+          "policeRank" TEXT NOT NULL DEFAULT '',
+          "isActive" BOOLEAN NOT NULL DEFAULT true,
+          "lastLogin" TIMESTAMP(3),
+          "providerId" TEXT,
+          "createdBy" TEXT,
+          "jurisdictionType" TEXT NOT NULL DEFAULT 'CITY',
+          "subCity" TEXT NOT NULL DEFAULT '',
+          "woreda" TEXT NOT NULL DEFAULT '',
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "Provider" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "name" TEXT NOT NULL,
+          "ownerName" TEXT NOT NULL DEFAULT '',
+          "phone" TEXT NOT NULL DEFAULT '',
+          "email" TEXT NOT NULL DEFAULT '',
+          "address" TEXT NOT NULL DEFAULT '',
+          "licenseNo" TEXT NOT NULL DEFAULT '',
+          "latitude" DOUBLE PRECISION,
+          "longitude" DOUBLE PRECISION,
+          "status" TEXT NOT NULL DEFAULT 'PENDING',
+          "subCity" TEXT NOT NULL DEFAULT '',
+          "woreda" TEXT NOT NULL DEFAULT '',
+          "bedCount" INTEGER,
+          "telegramChatId" TEXT,
+          "suspensionReason" TEXT NOT NULL DEFAULT '',
+          "suspendedAt" TIMESTAMP(3),
+          "suspendedBy" TEXT NOT NULL DEFAULT '',
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log("[auth] User + Provider tables ensured.");
 
-      if (!tableCheck.rows[0]?.exists) {
-        // User table doesn't exist — create it + seed admin user
-        console.log("[auth] User table not found. Creating tables...");
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS "User" (
-            "id" TEXT NOT NULL PRIMARY KEY,
-            "username" TEXT NOT NULL UNIQUE,
-            "password" TEXT NOT NULL,
-            "name" TEXT NOT NULL DEFAULT '',
-            "role" TEXT NOT NULL DEFAULT 'STAFF',
-            "permissions" TEXT NOT NULL DEFAULT '["reservations","guests"]',
-            "policeRank" TEXT NOT NULL DEFAULT '',
-            "isActive" BOOLEAN NOT NULL DEFAULT true,
-            "lastLogin" TIMESTAMP(3),
-            "providerId" TEXT,
-            "createdBy" TEXT,
-            "jurisdictionType" TEXT NOT NULL DEFAULT 'CITY',
-            "subCity" TEXT NOT NULL DEFAULT '',
-            "woreda" TEXT NOT NULL DEFAULT '',
-            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-          )
-        `);
-        console.log("[auth] User table created.");
-
-        // Also create Provider table — the login query does a LEFT JOIN on it
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS "Provider" (
-            "id" TEXT NOT NULL PRIMARY KEY,
-            "name" TEXT NOT NULL,
-            "ownerName" TEXT NOT NULL DEFAULT '',
-            "phone" TEXT NOT NULL DEFAULT '',
-            "email" TEXT NOT NULL DEFAULT '',
-            "address" TEXT NOT NULL DEFAULT '',
-            "licenseNo" TEXT NOT NULL DEFAULT '',
-            "latitude" DOUBLE PRECISION,
-            "longitude" DOUBLE PRECISION,
-            "status" TEXT NOT NULL DEFAULT 'PENDING',
-            "subCity" TEXT NOT NULL DEFAULT '',
-            "woreda" TEXT NOT NULL DEFAULT '',
-            "bedCount" INTEGER,
-            "telegramChatId" TEXT,
-            "suspensionReason" TEXT NOT NULL DEFAULT '',
-            "suspendedAt" TIMESTAMP(3),
-            "suspendedBy" TEXT NOT NULL DEFAULT '',
-            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-          )
-        `);
-        console.log("[auth] Provider table created.");
-
-        // Create admin user with plain-text password (will be auto-hashed on first login)
-        await client.query(`
-          INSERT INTO "User" ("id", "username", "password", "name", "role", "permissions", "isActive", "createdAt", "updatedAt")
-          VALUES ('admin-001', 'admin', 'Admin@2024', 'System Administrator', 'SUPERUSER', '[]', true, NOW(), NOW())
-          ON CONFLICT ("username") DO NOTHING
-        `);
-        console.log("[auth] Admin user created.");
-      }
+      // Seed admin user if not exists
+      await client.query(`
+        INSERT INTO "User" ("id", "username", "password", "name", "role", "permissions", "isActive", "createdAt", "updatedAt")
+        VALUES ('admin-001', 'admin', 'Admin@2024', 'System Administrator', 'SUPERUSER', '[]', true, NOW(), NOW())
+        ON CONFLICT ("username") DO NOTHING
+      `);
+      console.log("[auth] Admin user ensured.");
 
       // Query the user
       const result = await client.query(
