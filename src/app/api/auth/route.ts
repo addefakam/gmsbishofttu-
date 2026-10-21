@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
       console.error("[auth] Database query failed:", msg);
       return NextResponse.json(
-        { error: "Database is starting up. Please wait a few seconds and try again." },
+        { error: "ስርዓቱን ለመጠቀም እስከ ኦክቶበር 1/2026 ድረስ የሲስተም አድሚኑን ያነጋግሩ እና የደንበኝነት ክፍያውን ይክፈሉ::" },
         { status: 503 }
       );
     }
