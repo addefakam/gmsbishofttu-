@@ -27,6 +27,34 @@ async function ensureProviderColumns(): Promise<void> {
   });
   try {
     await client.connect();
+
+    // Create ALL enum types first — they're needed by the Provider table
+    const enumTypes = [
+      ['"UserRole"', "('POLICE','SUPERUSER','OPERATOR','STAFF')'],
+      ['"ProviderStatus"', "('PENDING','APPROVED','REJECTED','SUSPENDED')'],
+      ['"RoomType"', "('SINGLE','DOUBLE','TWIN','SUITE','DELUXE','KING','STANDARD','STANDARD_SUITE','JUNIOR_SUITE','EXECUTIVE_SUITE','PRESIDENTIAL_SUITE')'],
+      ['"RoomStatus"', "('AVAILABLE','OCCUPIED','MAINTENANCE','RESERVED')'],
+      ['"PaymentStatusType"', "('PAID','PARTIAL','PENDING')'],
+      ['"PaymentMethodType"', "('CASH','TRANSFER','CARD','MOBILE')'],
+      ['"ReservationStatus"', "('UPCOMING','ACTIVE','COMPLETED','CANCELLED','DELETED')'],
+      ['"NotificationType"', "('INFO','WARNING','SUCCESS','ERROR')'],
+      ['"HousekeepingTaskType"', "('CLEANING','MAINTENANCE','INSPECTION')'],
+      ['"HousekeepingTaskStatus"', "('PENDING','IN_PROGRESS','COMPLETED')'],
+      ['"TaskStatus"', "('PENDING','IN_PROGRESS','COMPLETED','CANCELLED')'],
+      ['"TaskPriority"', "('LOW','MEDIUM','HIGH','URGENT')'],
+      ['"SuspectSeverity"', "('LOW','MEDIUM','HIGH','CRITICAL')'],
+      ['"SubscriptionCycle"', "('MONTHLY','QUARTERLY','SEMI_ANNUAL','YEARLY')'],
+      ['"GroupBookingStatus"', "('PENDING','CONFIRMED','IN_PROGRESS','COMPLETED','CANCELLED')'],
+      ['"MessageChannel"', "('SMS','WHATSAPP')'],
+      ['"MessageStatus"', "('PENDING','SENT','FAILED','DELIVERED')'],
+    ];
+    for (const [typeName, values] of enumTypes) {
+      try {
+        await client.query(`CREATE TYPE ${typeName} AS ENUM ${values}`);
+      } catch {} // Type already exists — skip
+    }
+
+    // Then add ALL missing columns
     const columns = [
       ['licenseFile', 'TEXT NOT NULL DEFAULT \'\''],
       ['type', 'TEXT NOT NULL DEFAULT \'GUESTHOUSE\''],
@@ -51,6 +79,12 @@ async function ensureProviderColumns(): Promise<void> {
         await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
       } catch {}
     }
+
+    // Also fix the status column — it might be TEXT instead of ProviderStatus enum
+    try {
+      await client.query(`ALTER TABLE "Provider" ALTER COLUMN "status" TYPE "ProviderStatus" USING "status"::"ProviderStatus"`);
+    } catch {}
+
     await client.end();
   } catch (err) {
     try { await client.end(); } catch {}
