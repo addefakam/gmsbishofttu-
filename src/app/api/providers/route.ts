@@ -5,10 +5,58 @@ import { getAuthContext, getJurisdictionFilter, AuthError } from "@/lib/tenant";
 import { hashPassword } from "@/lib/auth-utils";
 import { uploadFile } from "@/lib/storage";
 import { isValidPhone, isValidEmail } from "@/lib/utils";
+import { ensureNewTables } from "@/lib/ensure-tables";
 
 // ── Force dynamic rendering ──
 // Prevents Vercel from caching stale provider data at the edge.
 export const dynamic = "force-dynamic";
+
+/**
+ * Ensures ALL Provider columns exist by running ALTER TABLE directly
+ * via pg.Client with SSL. This bypasses the cached ensureDatabase()
+ * which may have failed on a previous cold start.
+ */
+async function ensureProviderColumns(): Promise<void> {
+  const { Client } = await import("pg");
+  const url = process.env.DATABASE_URL || "";
+  const needsSsl = url.includes("supabase.co") || url.includes("neon.tech") || url.includes("sslmode=require");
+  const client = new Client({
+    connectionString: url,
+    connectionTimeoutMillis: 30000,
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+  });
+  try {
+    await client.connect();
+    const columns = [
+      ['licenseFile', 'TEXT NOT NULL DEFAULT \'\''],
+      ['type', 'TEXT NOT NULL DEFAULT \'GUESTHOUSE\''],
+      ['approvedBy', 'TEXT'],
+      ['approvedAt', 'TIMESTAMP(3)'],
+      ['rejectionReason', 'TEXT NOT NULL DEFAULT \'\''],
+      ['licenseNo', 'TEXT NOT NULL DEFAULT \'\''],
+      ['subCity', 'TEXT NOT NULL DEFAULT \'\''],
+      ['woreda', 'TEXT NOT NULL DEFAULT \'\''],
+      ['bedCount', 'INTEGER'],
+      ['telegramChatId', 'TEXT'],
+      ['suspensionReason', 'TEXT NOT NULL DEFAULT \'\''],
+      ['suspendedAt', 'TIMESTAMP(3)'],
+      ['suspendedBy', 'TEXT NOT NULL DEFAULT \'\''],
+      ['certNumber', 'TEXT'],
+      ['certIssuedAt', 'TIMESTAMP(3)'],
+      ['certIssuedBy', 'TEXT'],
+      ['certIssuedByName', 'TEXT'],
+    ];
+    for (const [col, def] of columns) {
+      try {
+        await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
+      } catch {}
+    }
+    await client.end();
+  } catch (err) {
+    try { await client.end(); } catch {}
+    console.warn("[providers] ensureProviderColumns failed:", err instanceof Error ? err.message : err);
+  }
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -75,6 +123,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    // Ensure ALL Provider columns exist BEFORE any Prisma query.
+    // This runs ALTER TABLE for each missing column via pg.Client with SSL.
+    await ensureProviderColumns();
     await ensureDatabase();
 
     const contentType = req.headers.get("content-type") || "";
