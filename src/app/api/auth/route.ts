@@ -83,6 +83,41 @@ export async function POST(req: NextRequest) {
         await client.query(`DROP TABLE IF EXISTS "Provider" CASCADE`);
       }
 
+      // Check ALL missing columns and add them via ALTER TABLE
+      const providerColumns = [
+        ['licenseFile', 'TEXT NOT NULL DEFAULT \'\''],
+        ['type', 'TEXT NOT NULL DEFAULT \'GUESTHOUSE\''],
+        ['approvedBy', 'TEXT'],
+        ['approvedAt', 'TIMESTAMP(3)'],
+        ['rejectionReason', 'TEXT NOT NULL DEFAULT \'\''],
+        ['subCity', 'TEXT NOT NULL DEFAULT \'\''],
+        ['woreda', 'TEXT NOT NULL DEFAULT \'\''],
+        ['bedCount', 'INTEGER'],
+        ['telegramChatId', 'TEXT'],
+        ['suspensionReason', 'TEXT NOT NULL DEFAULT \'\''],
+        ['suspendedAt', 'TIMESTAMP(3)'],
+        ['suspendedBy', 'TEXT NOT NULL DEFAULT \'\''],
+        ['certNumber', 'TEXT'],
+        ['certIssuedAt', 'TIMESTAMP(3)'],
+        ['certIssuedBy', 'TEXT'],
+        ['certIssuedByName', 'TEXT'],
+      ];
+      for (const [col, def] of providerColumns) {
+        try {
+          await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
+        } catch {}
+      }
+      // Same for User table
+      const userColumns = [
+        ['email', 'TEXT NOT NULL DEFAULT \'\''],
+        ['phone', 'TEXT NOT NULL DEFAULT \'\''],
+      ];
+      for (const [col, def] of userColumns) {
+        try {
+          await client.query(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
+        } catch {}
+      }
+
       await client.query(`
         CREATE TABLE IF NOT EXISTS "Provider" (
           "id" TEXT NOT NULL PRIMARY KEY,
@@ -92,10 +127,14 @@ export async function POST(req: NextRequest) {
           "email" TEXT NOT NULL DEFAULT '',
           "address" TEXT NOT NULL DEFAULT '',
           "licenseNo" TEXT NOT NULL DEFAULT '',
+          "licenseFile" TEXT NOT NULL DEFAULT '',
+          "type" TEXT NOT NULL DEFAULT 'GUESTHOUSE',
           "latitude" DOUBLE PRECISION,
           "longitude" DOUBLE PRECISION,
           "status" TEXT NOT NULL DEFAULT 'PENDING',
-          "type" TEXT NOT NULL DEFAULT 'GUESTHOUSE',
+          "approvedBy" TEXT,
+          "approvedAt" TIMESTAMP(3),
+          "rejectionReason" TEXT NOT NULL DEFAULT '',
           "subCity" TEXT NOT NULL DEFAULT '',
           "woreda" TEXT NOT NULL DEFAULT '',
           "bedCount" INTEGER,
@@ -112,32 +151,6 @@ export async function POST(req: NextRequest) {
         )
       `);
       console.log("[auth] User + Provider tables ensured.");
-
-      // Add any missing columns — each ALTER TABLE is independent (own try/catch)
-      // so if one fails, the rest still run.
-      const alterStatements = [
-        `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "email" TEXT NOT NULL DEFAULT ''`,
-        `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phone" TEXT NOT NULL DEFAULT ''`,
-        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "type" TEXT NOT NULL DEFAULT 'GUESTHOUSE'`,
-        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "subCity" TEXT NOT NULL DEFAULT ''`,
-        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "woreda" TEXT NOT NULL DEFAULT ''`,
-        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "bedCount" INTEGER`,
-        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "telegramChatId" TEXT`,
-        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspensionReason" TEXT NOT NULL DEFAULT ''`,
-        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspendedAt" TIMESTAMP(3)`,
-        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspendedBy" TEXT NOT NULL DEFAULT ''`,
-        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certNumber" TEXT`,
-        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certIssuedAt" TIMESTAMP(3)`,
-        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certIssuedBy" TEXT`,
-        `ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "certIssuedByName" TEXT`,
-      ];
-      for (const sql of alterStatements) {
-        try {
-          await client.query(sql);
-        } catch {
-          // Individual ALTER TABLE failure is OK — column might already exist
-        }
-      }
 
       // Seed admin user if not exists
       await client.query(`
