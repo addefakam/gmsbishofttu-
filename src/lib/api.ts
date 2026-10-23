@@ -82,18 +82,38 @@ export async function req(url: string, opts: RequestInit = {}) {
     }
 
     const t = await res.text().catch(() => "");
-    // Try to extract a clean error message from JSON response
-    try {
-      const j = JSON.parse(t);
-      if (j.error) throw new Error(j.error);
-      if (j.message) throw new Error(j.message);
-    } catch (e) {
-      if (e instanceof Error && e.message !== t) throw e; // Re-throw our extracted error
+    // Try to extract a clean error message from JSON response.
+    // IMPORTANT: If the body is empty (e.g. Vercel function timeout or
+    // unhandled server error), JSON.parse("") throws "Unexpected end of
+    // JSON input" — which then becomes the error message shown to the
+    // user. That's confusing. Instead, skip parsing when body is empty
+    // and throw a clean "Request failed: STATUS" message.
+    if (t && t.trim()) {
+      try {
+        const j = JSON.parse(t);
+        if (j.error) throw new Error(j.error);
+        if (j.message) throw new Error(j.message);
+      } catch (e) {
+        if (e instanceof Error && e.message !== t) throw e; // Re-throw our extracted error
+      }
+      throw new Error(t || `Request failed: ${res.status}`);
     }
-    throw new Error(t || `Request failed: ${res.status}`);
+    // Empty body — throw a clean status-based error.
+    throw new Error(`Request failed: ${res.status}`);
   }
-  const data = await res.json();
-  return data;
+  // ── Robust JSON parse for successful responses ──
+  // Some endpoints (e.g. DELETE) return 200 with an empty body. `res.json()`
+  // throws "Unexpected end of JSON input" on empty bodies. Handle that
+  // gracefully by returning null for empty bodies.
+  const text = await res.text();
+  if (!text || !text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Body wasn't valid JSON even though status was 200 — return null
+    // so callers don't crash.
+    return null;
+  }
 }
 
 // Auth

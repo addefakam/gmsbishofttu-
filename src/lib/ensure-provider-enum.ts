@@ -31,6 +31,8 @@ import { ensureDatabase } from "./init-db";
 
 let _providerEnumChecked = false;
 let _providerEnumPromise: Promise<void> | null = null;
+let _providerEnumAttempts = 0;
+const MAX_ENUM_ATTEMPTS = 3;
 
 export async function ensureProviderStatusEnum(): Promise<void> {
   if (_providerEnumChecked) return;
@@ -50,10 +52,26 @@ export async function ensureProviderStatusEnum(): Promise<void> {
       await convertProviderStatusDirectly();
       _providerEnumChecked = true;
     } catch (err) {
-      // Reset the promise so the next caller retries.
+      // CRITICAL: Do NOT re-throw. If this throws, the error escapes the
+      // API handler (the guard is outside the handler's try block), and
+      // Vercel returns an empty body — the frontend then fails with
+      // "Unexpected end of JSON input".
+      //
+      // Instead, log the error and mark as checked so we don't retry
+      // on EVERY request (which would multiply the problem). The actual
+      // Prisma query will fail with a proper JSON error if the column
+      // is still TEXT — that error is caught by the handler's try/catch.
+      _providerEnumAttempts++;
+      console.error(
+        `[ensureProviderStatusEnum] Attempt ${_providerEnumAttempts}/${MAX_ENUM_ATTEMPTS} failed:`,
+        err instanceof Error ? err.message : err
+      );
+      if (_providerEnumAttempts >= MAX_ENUM_ATTEMPTS) {
+        console.error(`[ensureProviderStatusEnum] Giving up after ${MAX_ENUM_ATTEMPTS} attempts — column may still be TEXT. Subsequent Prisma queries will fail with their own error messages.`);
+        _providerEnumChecked = true;
+      }
+      // Reset the promise so the next call can retry (up to MAX_ENUM_ATTEMPTS).
       _providerEnumPromise = null;
-      console.error("[ensureProviderStatusEnum] Failed — will retry on next call:", err instanceof Error ? err.message : err);
-      throw err;
     }
   })();
 
