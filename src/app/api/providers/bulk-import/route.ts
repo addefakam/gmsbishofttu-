@@ -5,7 +5,9 @@ import { getAuthContext, AuthError } from "@/lib/tenant";
 import { hashPassword } from "@/lib/auth-utils";
 import { isValidPhone, isValidEmail } from "@/lib/utils";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 export async function POST(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     await ensureDatabase();
 

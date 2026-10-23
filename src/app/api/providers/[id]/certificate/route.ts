@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { ensureDatabase } from "@/lib/init-db";
 import { getAuthContext, AuthError } from "@/lib/tenant";
 import { logStaffActivity, getLogUserInfo } from "@/lib/staff-log";
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import {
   buildCertificatePdf,
   buildCertNumber,
@@ -27,6 +28,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+    await ensureProviderStatusEnum();
   try {
     await ensureDatabase();
     const auth = await getAuthContext(req);

@@ -3,7 +3,9 @@ import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { getAuthContext, requirePolice, AuthError } from "@/lib/tenant";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 export async function POST(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
     requirePolice(auth);

@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { getAuthContext, requirePolice, AuthError } from "@/lib/tenant";
 import { logAudit } from "@/lib/audit";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 // Hard cap to prevent runaway exports. Vercel hobby plan has 1GB memory limit.
 // 10K rows × ~1KB each ≈ 10MB — well within budget.
 const MAX_ROWS_PER_ENTITY = 10000;
@@ -89,6 +90,7 @@ function serialize(val: unknown): unknown {
 }
 
 export async function GET(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
     requirePolice(auth);

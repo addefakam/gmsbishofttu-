@@ -4,6 +4,7 @@ import { getAuthContext, AuthError } from "@/lib/tenant";
 import { ensureInlineMigrations } from "@/lib/inline-migrate";
 import { verifyPayment } from "@/lib/chapa";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 /**
  * POST /api/my-subscription/pay/chapa/verify
  *
@@ -13,6 +14,7 @@ import { verifyPayment } from "@/lib/chapa";
  * Body: { subPrefix?: string }  (subscription ID prefix from URL param)
  */
 export async function POST(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     await ensureInlineMigrations();
 

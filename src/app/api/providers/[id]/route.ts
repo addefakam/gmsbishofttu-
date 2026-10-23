@@ -3,10 +3,12 @@ import { db } from "@/lib/db";
 import { getAuthContext, requirePolice, AuthError } from "@/lib/tenant";
 import { logAudit } from "@/lib/audit";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
     if (auth.role !== "POLICE" && auth.role !== "SUPERUSER") {
@@ -33,6 +35,7 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
 
@@ -134,6 +137,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
 

@@ -6,7 +6,9 @@ import { getAuthContext, requirePolice, getJurisdictionFilter, AuthError } from 
 import { logAudit } from "@/lib/audit";
 import { resetInitFlag, ensureDatabase } from "@/lib/init-db";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 export async function GET(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     resetInitFlag();
     await ensureDatabase();

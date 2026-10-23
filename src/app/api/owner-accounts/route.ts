@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAuthContext, AuthError } from "@/lib/tenant";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 // GET /api/owner-accounts — OPERATOR lists providers with owner accounts + police accounts
 export async function GET(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
     if (auth.role !== "SUPERUSER" && auth.role !== "OPERATOR" && auth.role !== "POLICE") {

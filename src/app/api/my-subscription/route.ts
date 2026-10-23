@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAuthContext, AuthError } from "@/lib/tenant";
 import { ensureInlineMigrations } from "@/lib/inline-migrate";
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import {
   calcSubscriptionStatus,
   calcNextEndDate,
@@ -12,6 +13,7 @@ import {
 } from "@/lib/subscription";
 
 export async function GET(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     // Ensure critical columns/tables exist BEFORE any Prisma query
     await ensureInlineMigrations();
@@ -206,6 +208,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     // Ensure critical columns/tables exist BEFORE any Prisma query
     await ensureInlineMigrations();

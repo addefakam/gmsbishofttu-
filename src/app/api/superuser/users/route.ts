@@ -5,8 +5,10 @@ import { getAuthContext, AuthError } from "@/lib/tenant";
 import { hashPassword } from "@/lib/auth-utils";
 import { isValidPhone, isValidEmail } from "@/lib/utils";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 // GET /api/superuser/users — List ALL users across all providers with stats
 export async function GET(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     resetInitFlag();
     await ensureDatabase();
@@ -116,6 +118,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/superuser/users — Create a new user (any role, any provider)
 export async function POST(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     resetInitFlag();
     await ensureDatabase();

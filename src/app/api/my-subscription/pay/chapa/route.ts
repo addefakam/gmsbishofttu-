@@ -10,6 +10,7 @@ import {
 } from "@/lib/chapa";
 import { calcNextEndDate, CYCLE_DAYS } from "@/lib/subscription";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 /**
  * POST /api/my-subscription/pay/chapa
  *
@@ -18,6 +19,7 @@ import { calcNextEndDate, CYCLE_DAYS } from "@/lib/subscription";
  * Returns: { checkoutUrl, txRef }
  */
 export async function POST(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     await ensureInlineMigrations();
 

@@ -5,9 +5,11 @@ import { getAuthContext, getProviderFilter, AuthError } from "@/lib/tenant";
 import { calcSubscriptionStatus, TRIAL_DAYS } from "@/lib/subscription";
 import { todayStr } from "@/lib/reservation-maintenance";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
     const filter = getProviderFilter(auth);

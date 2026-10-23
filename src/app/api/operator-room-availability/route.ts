@@ -5,6 +5,7 @@ import { ensureNewTables } from "@/lib/ensure-tables";
 import { parseOwnerFeatureFlags } from "@/app/api/operator-features/route";
 import { runReservationMaintenance } from "@/lib/reservation-maintenance";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 export const dynamic = "force-dynamic";
 
 /**
@@ -23,6 +24,7 @@ export const dynamic = "force-dynamic";
  * Returns 403 if the flag is OFF or if the user lacks permission.
  */
 export async function GET(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     await ensureNewTables();
     const auth = await getAuthContext(req);

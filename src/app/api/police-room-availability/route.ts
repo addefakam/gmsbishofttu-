@@ -5,11 +5,13 @@ import { getAuthContext, requirePolice, getJurisdictionFilter, AuthError } from 
 import { runReservationMaintenance } from "@/lib/reservation-maintenance";
 import { ensureNewTables } from "@/lib/ensure-tables";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 // ── Force dynamic rendering ──
 // Prevents Vercel from caching stale room availability data at the edge.
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     await ensureNewTables();
     const auth = await getAuthContext(req);

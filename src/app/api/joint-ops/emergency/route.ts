@@ -4,6 +4,7 @@ import { logAudit } from "@/lib/audit";
 import { verifyToken } from "@/lib/auth-utils";
 import { getAuthContext, AuthError } from "@/lib/tenant";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 /**
  * POST /api/joint-ops/emergency
  *
@@ -12,6 +13,7 @@ import { getAuthContext, AuthError } from "@/lib/tenant";
  * - unsuspend-all: Unsuspend all SUSPENDED guesthouses
  */
 export async function POST(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     // ── Deploy-blocker fix: require authenticated session first ──
     const auth = await getAuthContext(req);

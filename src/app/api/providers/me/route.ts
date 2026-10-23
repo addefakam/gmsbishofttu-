@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getAuthContext, AuthError } from "@/lib/tenant";
 import { isValidPhone, isValidEmail } from "@/lib/utils";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 /**
  * /api/providers/me
  *
@@ -60,6 +61,7 @@ const GUESTHOUSE_TYPES = ["GUEST_HOUSE", "HOTEL", "LODGE", "RESORT", "OTHER"];
 // ───────────────────────────── GET ─────────────────────────────
 
 export async function GET(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
 
@@ -127,6 +129,7 @@ export async function GET(req: NextRequest) {
 // ───────────────────────────── PATCH ─────────────────────────────
 
 export async function PATCH(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
 

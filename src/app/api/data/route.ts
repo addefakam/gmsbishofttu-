@@ -4,6 +4,7 @@ import { getAuthContext, AuthError } from "@/lib/tenant";
 import { logAudit } from "@/lib/audit";
 import { Prisma } from "@prisma/client";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 /**
  * Turso/LibSQL does NOT reliably support Prisma's upsert() (INSERT ... ON CONFLICT).
  * This helper replaces upsert with findFirst + create/update pattern.
@@ -20,6 +21,7 @@ async function safeUpsert<T extends { id: string }>(
 }
 
 export async function GET(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
     if (auth.role !== "SUPERUSER") {
@@ -172,6 +174,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
     if (auth.role !== "SUPERUSER") {

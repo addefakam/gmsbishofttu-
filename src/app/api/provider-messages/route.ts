@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getAuthContext, getProviderFilter, AuthError } from "@/lib/tenant";
 import { ensureNewTables } from "@/lib/ensure-tables";
 
+import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 export const dynamic = "force-dynamic";
 
 /**
@@ -44,6 +45,7 @@ async function ensureProviderMessageTable(): Promise<void> {
  *   provider and the specified provider. Also marks received messages as read.
  */
 export async function GET(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     const { searchParams } = new URL(req.url);
     const withProviderId = searchParams.get("with");
@@ -208,6 +210,7 @@ export async function GET(req: NextRequest) {
  * Sends a message from the current provider to the specified provider.
  */
 export async function POST(req: NextRequest) {
+    await ensureProviderStatusEnum();
   try {
     await ensureProviderMessageTable();
     await ensureNewTables();
