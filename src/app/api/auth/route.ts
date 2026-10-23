@@ -41,10 +41,41 @@ export async function POST(req: NextRequest) {
       await client.connect();
       console.log("[auth] Connected to database successfully.");
 
-      // ALWAYS create both tables — CREATE TABLE IF NOT EXISTS is a no-op
-      // if the table already exists. Don't gate on a table existence check
-      // — if User exists but Provider doesn't (partial state from a
-      // previous failed attempt), the JOIN query will fail.
+      // ── Step 1: Create ALL enum types FIRST ──
+      // Without this, CREATE TABLE for Provider will fail with:
+      //   type "public.ProviderStatus" does not exist (42704)
+      // Use a single SQL string (template literal) — avoids the bug where
+      // mixed single/double quotes in JS arrays break the parser.
+      const ENUM_CREATE_SQL = `
+        DO $$ BEGIN CREATE TYPE "UserRole" AS ENUM ('POLICE','SUPERUSER','OPERATOR','STAFF'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "ProviderStatus" AS ENUM ('PENDING','APPROVED','REJECTED','SUSPENDED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "RoomType" AS ENUM ('SINGLE','DOUBLE','TWIN','SUITE','DELUXE','KING','STANDARD','STANDARD_SUITE','JUNIOR_SUITE','EXECUTIVE_SUITE','PRESIDENTIAL_SUITE'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "RoomStatus" AS ENUM ('AVAILABLE','OCCUPIED','MAINTENANCE','RESERVED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "PaymentStatusType" AS ENUM ('PAID','PARTIAL','PENDING'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "PaymentMethodType" AS ENUM ('CASH','TRANSFER','CARD','MOBILE'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "ReservationStatus" AS ENUM ('UPCOMING','ACTIVE','COMPLETED','CANCELLED','DELETED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "NotificationType" AS ENUM ('INFO','WARNING','SUCCESS','ERROR'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "HousekeepingTaskType" AS ENUM ('CLEANING','MAINTENANCE','INSPECTION'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "HousekeepingTaskStatus" AS ENUM ('PENDING','IN_PROGRESS','COMPLETED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "TaskStatus" AS ENUM ('PENDING','IN_PROGRESS','COMPLETED','CANCELLED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "TaskPriority" AS ENUM ('LOW','MEDIUM','HIGH','URGENT'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "SuspectSeverity" AS ENUM ('LOW','MEDIUM','HIGH','CRITICAL'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "SubscriptionCycle" AS ENUM ('MONTHLY','QUARTERLY','SEMI_ANNUAL','YEARLY'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "GroupBookingStatus" AS ENUM ('PENDING','CONFIRMED','IN_PROGRESS','COMPLETED','CANCELLED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "MessageChannel" AS ENUM ('SMS','WHATSAPP'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+        DO $$ BEGIN CREATE TYPE "MessageStatus" AS ENUM ('PENDING','SENT','FAILED','DELIVERED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      `;
+      try {
+        await client.query(ENUM_CREATE_SQL);
+        console.log("[auth] Enum types ensured.");
+      } catch (enumErr) {
+        console.warn("[auth] Enum creation warning (likely already exists):", enumErr instanceof Error ? enumErr.message : enumErr);
+      }
+
+      // ── Step 2: Create User table ──
+      // Use proper "UserRole" enum type for the role column — NOT TEXT.
+      // Older deploys created this as TEXT; the FIX_ENUM_COLUMNS_SQL migration
+      // in ensureDatabase() will convert any existing TEXT column to the enum.
       await client.query(`
         CREATE TABLE IF NOT EXISTS "User" (
           "id" TEXT NOT NULL PRIMARY KEY,
@@ -53,7 +84,7 @@ export async function POST(req: NextRequest) {
           "name" TEXT NOT NULL DEFAULT '',
           "email" TEXT NOT NULL DEFAULT '',
           "phone" TEXT NOT NULL DEFAULT '',
-          "role" TEXT NOT NULL DEFAULT 'STAFF',
+          "role" "UserRole" NOT NULL DEFAULT 'STAFF',
           "permissions" TEXT NOT NULL DEFAULT '["reservations","guests"]',
           "policeRank" TEXT NOT NULL DEFAULT '',
           "isActive" BOOLEAN NOT NULL DEFAULT true,
@@ -67,11 +98,33 @@ export async function POST(req: NextRequest) {
           "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
       `);
-      // Drop and recreate Provider table — it was created without 'type'
-      // column by a previous deploy. CREATE TABLE IF NOT EXISTS won't add
-      // missing columns to an existing table, so we must drop + recreate.
-      // CASCADE drops dependent FK constraints too.
-      // Only do this if the 'type' column is missing.
+
+      // ── Step 3: Create Provider table ──
+      // Use proper "ProviderStatus" enum type for the status column.
+      // If the table was previously created with status TEXT (by an older
+      // deploy), drop & recreate it to use the proper enum type.
+      // We only drop if the column type is TEXT (not enum).
+      const statusTypeCheck = await client.query(`
+        SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'Provider' AND column_name = 'status'
+        LIMIT 1
+      `);
+      const statusDataType = statusTypeCheck.rows[0]?.data_type;
+      if (statusDataType === 'text' || statusDataType === 'character varying') {
+        console.log("[auth] Provider.status is TEXT — converting to ProviderStatus enum...");
+        // Convert in-place: normalize bad values first, then ALTER COLUMN TYPE
+        try {
+          await client.query(`UPDATE "Provider" SET "status" = 'PENDING' WHERE "status" IS NULL OR "status"::text NOT IN ('PENDING','APPROVED','REJECTED','SUSPENDED')`);
+          await client.query(`ALTER TABLE "Provider" ALTER COLUMN "status" TYPE "ProviderStatus" USING "status"::"ProviderStatus"`);
+          console.log("[auth] Provider.status converted to ProviderStatus enum.");
+        } catch (convErr) {
+          console.error("[auth] Failed to convert Provider.status to enum:", convErr instanceof Error ? convErr.message : convErr);
+        }
+      }
+
+      // Drop and recreate Provider table ONLY IF 'type' column is missing
+      // (legacy schema from old deploy). This is destructive — only do it
+      // when truly necessary.
       const typeCheck = await client.query(`
         SELECT EXISTS (
           SELECT 1 FROM information_schema.columns
@@ -118,6 +171,7 @@ export async function POST(req: NextRequest) {
         } catch {}
       }
 
+      // Now create the Provider table with proper enum type (if it doesn't exist)
       await client.query(`
         CREATE TABLE IF NOT EXISTS "Provider" (
           "id" TEXT NOT NULL PRIMARY KEY,
@@ -131,7 +185,7 @@ export async function POST(req: NextRequest) {
           "type" TEXT NOT NULL DEFAULT 'GUESTHOUSE',
           "latitude" DOUBLE PRECISION,
           "longitude" DOUBLE PRECISION,
-          "status" TEXT NOT NULL DEFAULT 'PENDING',
+          "status" "ProviderStatus" NOT NULL DEFAULT 'PENDING',
           "approvedBy" TEXT,
           "approvedAt" TIMESTAMP(3),
           "rejectionReason" TEXT NOT NULL DEFAULT '',
@@ -150,7 +204,7 @@ export async function POST(req: NextRequest) {
           "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
       `);
-      console.log("[auth] User + Provider tables ensured.");
+      console.log("[auth] User + Provider tables ensured (with proper enum types).");
 
       // Seed admin user if not exists
       await client.query(`

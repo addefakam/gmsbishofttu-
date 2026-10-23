@@ -753,6 +753,146 @@ CREATE INDEX IF NOT EXISTS "User_woreda_idx" ON "User" ("woreda");
 
 `;
 
+// ─── Fix enum-typed columns ────────────────────────────────────────────────
+// Older deploys (and the auth route) may have created some columns as TEXT
+// instead of the proper enum type. This converts them in-place using ALTER
+// COLUMN ... TYPE ... USING ... — which is safe as long as the existing
+// values are valid enum members. Wrapped in DO $$ BEGIN ... EXCEPTION WHEN
+// ... so it's safe to re-run (no-op if already enum-typed).
+//
+// Critical for Provider.status — without this, prisma.provider.create()
+// fails with: type "public.ProviderStatus" does not exist (42704)
+const FIX_ENUM_COLUMNS_SQL = `
+DO $$ BEGIN
+  -- Provider.status: TEXT → ProviderStatus enum
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='Provider' AND column_name='status'
+      AND data_type='text'
+  ) AND EXISTS (SELECT 1 FROM pg_type WHERE typname='ProviderStatus') THEN
+    -- Normalize any bad values to 'PENDING' first (covers NULL, empty, or invalid strings)
+    UPDATE "Provider" SET "status" = 'PENDING' WHERE "status" IS NULL OR "status"::text NOT IN ('PENDING','APPROVED','REJECTED','SUSPENDED');
+    ALTER TABLE "Provider" ALTER COLUMN "status" TYPE "ProviderStatus" USING "status"::"ProviderStatus";
+  END IF;
+EXCEPTION WHEN OTHERS THEN null;
+END $$;
+
+DO $$ BEGIN
+  -- User.role: TEXT → UserRole enum
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='User' AND column_name='role'
+      AND data_type='text'
+  ) AND EXISTS (SELECT 1 FROM pg_type WHERE typname='UserRole') THEN
+    UPDATE "User" SET "role" = 'STAFF' WHERE "role" IS NULL OR "role"::text NOT IN ('POLICE','SUPERUSER','OPERATOR','STAFF');
+    ALTER TABLE "User" ALTER COLUMN "role" TYPE "UserRole" USING "role"::"UserRole";
+  END IF;
+EXCEPTION WHEN OTHERS THEN null;
+END $$;
+
+DO $$ BEGIN
+  -- Room.type: TEXT → RoomType enum (if it was created as TEXT by mistake)
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='Room' AND column_name='type'
+      AND data_type='text'
+  ) AND EXISTS (SELECT 1 FROM pg_type WHERE typname='RoomType') THEN
+    UPDATE "Room" SET "type" = 'STANDARD' WHERE "type" IS NULL OR "type"::text NOT IN ('SINGLE','DOUBLE','TWIN','SUITE','DELUXE','KING','STANDARD','STANDARD_SUITE','JUNIOR_SUITE','EXECUTIVE_SUITE','PRESIDENTIAL_SUITE');
+    ALTER TABLE "Room" ALTER COLUMN "type" TYPE "RoomType" USING "type"::"RoomType";
+  END IF;
+EXCEPTION WHEN OTHERS THEN null;
+END $$;
+
+DO $$ BEGIN
+  -- Room.status: TEXT → RoomStatus enum
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='Room' AND column_name='status'
+      AND data_type='text'
+  ) AND EXISTS (SELECT 1 FROM pg_type WHERE typname='RoomStatus') THEN
+    UPDATE "Room" SET "status" = 'AVAILABLE' WHERE "status" IS NULL OR "status"::text NOT IN ('AVAILABLE','OCCUPIED','MAINTENANCE','RESERVED');
+    ALTER TABLE "Room" ALTER COLUMN "status" TYPE "RoomStatus" USING "status"::"RoomStatus";
+  END IF;
+EXCEPTION WHEN OTHERS THEN null;
+END $$;
+
+DO $$ BEGIN
+  -- Reservation.status: TEXT → ReservationStatus enum
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='Reservation' AND column_name='status'
+      AND data_type='text'
+  ) AND EXISTS (SELECT 1 FROM pg_type WHERE typname='ReservationStatus') THEN
+    UPDATE "Reservation" SET "status" = 'UPCOMING' WHERE "status" IS NULL OR "status"::text NOT IN ('UPCOMING','ACTIVE','COMPLETED','CANCELLED','DELETED');
+    ALTER TABLE "Reservation" ALTER COLUMN "status" TYPE "ReservationStatus" USING "status"::"ReservationStatus";
+  END IF;
+EXCEPTION WHEN OTHERS THEN null;
+END $$;
+
+DO $$ BEGIN
+  -- Reservation.paymentStatus: TEXT → PaymentStatusType enum
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='Reservation' AND column_name='paymentStatus'
+      AND data_type='text'
+  ) AND EXISTS (SELECT 1 FROM pg_type WHERE typname='PaymentStatusType') THEN
+    UPDATE "Reservation" SET "paymentStatus" = 'PENDING' WHERE "paymentStatus" IS NULL OR "paymentStatus"::text NOT IN ('PAID','PARTIAL','PENDING');
+    ALTER TABLE "Reservation" ALTER COLUMN "paymentStatus" TYPE "PaymentStatusType" USING "paymentStatus"::"PaymentStatusType";
+  END IF;
+EXCEPTION WHEN OTHERS THEN null;
+END $$;
+
+DO $$ BEGIN
+  -- Reservation.paymentMethod: TEXT → PaymentMethodType enum
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='Reservation' AND column_name='paymentMethod'
+      AND data_type='text'
+  ) AND EXISTS (SELECT 1 FROM pg_type WHERE typname='PaymentMethodType') THEN
+    ALTER TABLE "Reservation" ALTER COLUMN "paymentMethod" TYPE "PaymentMethodType" USING "paymentMethod"::"PaymentMethodType";
+  END IF;
+EXCEPTION WHEN OTHERS THEN null;
+END $$;
+
+DO $$ BEGIN
+  -- DaytimeBooking.paymentStatus: TEXT → PaymentStatusType enum
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='DaytimeBooking' AND column_name='paymentStatus'
+      AND data_type='text'
+  ) AND EXISTS (SELECT 1 FROM pg_type WHERE typname='PaymentStatusType') THEN
+    UPDATE "DaytimeBooking" SET "paymentStatus" = 'PENDING' WHERE "paymentStatus" IS NULL OR "paymentStatus"::text NOT IN ('PAID','PARTIAL','PENDING');
+    ALTER TABLE "DaytimeBooking" ALTER COLUMN "paymentStatus" TYPE "PaymentStatusType" USING "paymentStatus"::"PaymentStatusType";
+  END IF;
+EXCEPTION WHEN OTHERS THEN null;
+END $$;
+
+DO $$ BEGIN
+  -- DaytimeBooking.paymentMethod: TEXT → PaymentMethodType enum
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='DaytimeBooking' AND column_name='paymentMethod'
+      AND data_type='text'
+  ) AND EXISTS (SELECT 1 FROM pg_type WHERE typname='PaymentMethodType') THEN
+    ALTER TABLE "DaytimeBooking" ALTER COLUMN "paymentMethod" TYPE "PaymentMethodType" USING "paymentMethod"::"PaymentMethodType";
+  END IF;
+EXCEPTION WHEN OTHERS THEN null;
+END $$;
+
+DO $$ BEGIN
+  -- Expense.paymentMethod: TEXT → PaymentMethodType enum
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='Expense' AND column_name='paymentMethod'
+      AND data_type='text'
+  ) AND EXISTS (SELECT 1 FROM pg_type WHERE typname='PaymentMethodType') THEN
+    UPDATE "Expense" SET "paymentMethod" = 'CASH' WHERE "paymentMethod" IS NULL OR "paymentMethod"::text NOT IN ('CASH','TRANSFER','CARD','MOBILE');
+    ALTER TABLE "Expense" ALTER COLUMN "paymentMethod" TYPE "PaymentMethodType" USING "paymentMethod"::"PaymentMethodType";
+  END IF;
+EXCEPTION WHEN OTHERS THEN null;
+END $$;
+`;
+
 // ─── Indexes ───────────────────────────────────────────────────────────────
 const INDEXES_SQL = `
 CREATE INDEX IF NOT EXISTS "Provider_status_idx" ON "Provider" ("status");
@@ -1086,9 +1226,18 @@ export async function ensureDatabase(): Promise<void> {
       if (tableExists) {
         console.log("[init-db] Tables already exist, ensuring all tables & columns are up to date...");
         try {
-          // Run TABLES_SQL first — it uses CREATE TABLE IF NOT EXISTS so it's safe.
-          // This ensures any newly-added tables (e.g. Subscription, SubscriptionPayment, SubscriptionPlan)
-          // get created on existing databases.
+          // ALWAYS create enum types first — even on existing databases.
+          // The auth route (and older deploys) may have created tables with
+          // TEXT columns (e.g. Provider.status TEXT instead of ProviderStatus
+          // enum). The ENUMS_SQL uses DO $$ BEGIN ... EXCEPTION WHEN
+          // duplicate_object THEN null; END $$ so it's safe to re-run.
+          // Without this, prisma.provider.create() fails with:
+          //   type "public.ProviderStatus" does not exist (code 42704)
+          await client.query(ENUMS_SQL);
+          console.log("[init-db] Enum types verified on existing database.");
+
+          // Run TABLES_SQL — uses CREATE TABLE IF NOT EXISTS, safe on existing DB.
+          // This creates any newly-added tables (e.g. Subscription, SubscriptionPlan).
           await client.query(TABLES_SQL);
           console.log("[init-db] Table existence verified.");
           await client.query(FKS_SQL);
@@ -1096,11 +1245,12 @@ export async function ensureDatabase(): Promise<void> {
           await client.query(MIGRATIONS_SQL);
           console.log("[init-db] Migrations applied to existing tables.");
 
-          // so ALTER TYPE ADD VALUE works here — unlike Prisma's $executeRaw).
-          try {
-          } catch (enumErr) {
-            // Ignore if it already exists
-          }
+          // Now that enums exist + migrations ran, fix any columns that
+          // were created as TEXT (by auth route or older deploys) but
+          // should be enum-typed. This is idempotent — if already enum,
+          // the ALTER is a no-op.
+          await client.query(FIX_ENUM_COLUMNS_SQL);
+          console.log("[init-db] Enum-typed columns verified.");
 
           await client.query(INDEXES_SQL);
           console.log("[init-db] Indexes verified.");
@@ -1158,9 +1308,10 @@ export async function ensureDatabase(): Promise<void> {
       console.log("[init-db] Running migrations...");
       await client.query(MIGRATIONS_SQL);
 
-      try {
-      } catch (enumErr) {
-      }
+      // Fix any TEXT-typed columns that should be enum-typed.
+      // (Idempotent — no-op if already enum.)
+      await client.query(FIX_ENUM_COLUMNS_SQL);
+      console.log("[init-db] Enum-typed columns verified.");
 
       // Create indexes
       console.log("[init-db] Creating indexes...");
@@ -1221,6 +1372,9 @@ export async function ensureDatabase(): Promise<void> {
         if (res[0]?.ok) {
           console.log("[init-db] Tables already exist (verified via Prisma), ensuring all tables & columns are up to date...");
           try {
+            // ALWAYS create enums first — even on existing databases.
+            await execViaPrisma(ENUMS_SQL);
+            console.log("[init-db] Enums verified via Prisma.");
             // Run TABLES_SQL — uses CREATE TABLE IF NOT EXISTS, safe on existing DB.
             // This creates any newly-added tables (e.g. Subscription, SubscriptionPlan).
             await execViaPrisma(TABLES_SQL);
@@ -1229,6 +1383,8 @@ export async function ensureDatabase(): Promise<void> {
             console.log("[init-db] Foreign keys verified via Prisma.");
             await execViaPrisma(MIGRATIONS_SQL);
             console.log("[init-db] Migrations applied via Prisma.");
+            await execViaPrisma(FIX_ENUM_COLUMNS_SQL);
+            console.log("[init-db] Enum-typed columns verified via Prisma.");
             await execViaPrisma(INDEXES_SQL);
             console.log("[init-db] Indexes verified via Prisma.");
           } catch (migrateErr) {

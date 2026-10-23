@@ -41,13 +41,16 @@ export async function ensureNewTables(): Promise<void> {
       // Resetting forces a full re-run.
       resetInitFlag();
       await ensureDatabase();
-    } catch (err) {
-      console.error("[ensureNewTables] Error:", err);
-      // Don't set setupDone=true if the migration failed — let it retry
-      // on the next request.
-      return;
-    } finally {
+      // ONLY mark setupDone=true if ensureDatabase() succeeded.
+      // If it threw, we want the next request to retry the full migration.
       setupDone = true;
+    } catch (err) {
+      console.error("[ensureNewTables] Migration failed — will retry on next request:", err instanceof Error ? err.message : err);
+      // Don't set setupDone=true — let it retry on the next request.
+      // Reset setupPromise so the next call can re-attempt.
+      setupPromise = null;
+      // Re-throw so callers know it failed (they already handle errors)
+      throw err;
     }
   })();
 

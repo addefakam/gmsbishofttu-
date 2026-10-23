@@ -28,30 +28,32 @@ async function ensureProviderColumns(): Promise<void> {
   try {
     await client.connect();
 
-    // Create ALL enum types first — they're needed by the Provider table
-    const enumTypes = [
-      ['"UserRole"', "('POLICE','SUPERUSER','OPERATOR','STAFF')'],
-      ['"ProviderStatus"', "('PENDING','APPROVED','REJECTED','SUSPENDED')'],
-      ['"RoomType"', "('SINGLE','DOUBLE','TWIN','SUITE','DELUXE','KING','STANDARD','STANDARD_SUITE','JUNIOR_SUITE','EXECUTIVE_SUITE','PRESIDENTIAL_SUITE')'],
-      ['"RoomStatus"', "('AVAILABLE','OCCUPIED','MAINTENANCE','RESERVED')'],
-      ['"PaymentStatusType"', "('PAID','PARTIAL','PENDING')'],
-      ['"PaymentMethodType"', "('CASH','TRANSFER','CARD','MOBILE')'],
-      ['"ReservationStatus"', "('UPCOMING','ACTIVE','COMPLETED','CANCELLED','DELETED')'],
-      ['"NotificationType"', "('INFO','WARNING','SUCCESS','ERROR')'],
-      ['"HousekeepingTaskType"', "('CLEANING','MAINTENANCE','INSPECTION')'],
-      ['"HousekeepingTaskStatus"', "('PENDING','IN_PROGRESS','COMPLETED')'],
-      ['"TaskStatus"', "('PENDING','IN_PROGRESS','COMPLETED','CANCELLED')'],
-      ['"TaskPriority"', "('LOW','MEDIUM','HIGH','URGENT')'],
-      ['"SuspectSeverity"', "('LOW','MEDIUM','HIGH','CRITICAL')'],
-      ['"SubscriptionCycle"', "('MONTHLY','QUARTERLY','SEMI_ANNUAL','YEARLY')'],
-      ['"GroupBookingStatus"', "('PENDING','CONFIRMED','IN_PROGRESS','COMPLETED','CANCELLED')'],
-      ['"MessageChannel"', "('SMS','WHATSAPP')'],
-      ['"MessageStatus"', "('PENDING','SENT','FAILED','DELIVERED')'],
-    ];
-    for (const [typeName, values] of enumTypes) {
-      try {
-        await client.query(`CREATE TYPE ${typeName} AS ENUM ${values}`);
-      } catch {} // Type already exists — skip
+    // Create ALL enum types first — they're needed by the Provider table.
+    // Use a single SQL string (template literal) — avoids the bug where
+    // mixed single/double quotes in JS arrays break the parser.
+    const ENUM_CREATE_SQL = `
+      DO $$ BEGIN CREATE TYPE "UserRole" AS ENUM ('POLICE','SUPERUSER','OPERATOR','STAFF'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "ProviderStatus" AS ENUM ('PENDING','APPROVED','REJECTED','SUSPENDED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "RoomType" AS ENUM ('SINGLE','DOUBLE','TWIN','SUITE','DELUXE','KING','STANDARD','STANDARD_SUITE','JUNIOR_SUITE','EXECUTIVE_SUITE','PRESIDENTIAL_SUITE'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "RoomStatus" AS ENUM ('AVAILABLE','OCCUPIED','MAINTENANCE','RESERVED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "PaymentStatusType" AS ENUM ('PAID','PARTIAL','PENDING'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "PaymentMethodType" AS ENUM ('CASH','TRANSFER','CARD','MOBILE'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "ReservationStatus" AS ENUM ('UPCOMING','ACTIVE','COMPLETED','CANCELLED','DELETED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "NotificationType" AS ENUM ('INFO','WARNING','SUCCESS','ERROR'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "HousekeepingTaskType" AS ENUM ('CLEANING','MAINTENANCE','INSPECTION'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "HousekeepingTaskStatus" AS ENUM ('PENDING','IN_PROGRESS','COMPLETED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "TaskStatus" AS ENUM ('PENDING','IN_PROGRESS','COMPLETED','CANCELLED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "TaskPriority" AS ENUM ('LOW','MEDIUM','HIGH','URGENT'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "SuspectSeverity" AS ENUM ('LOW','MEDIUM','HIGH','CRITICAL'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "SubscriptionCycle" AS ENUM ('MONTHLY','QUARTERLY','SEMI_ANNUAL','YEARLY'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "GroupBookingStatus" AS ENUM ('PENDING','CONFIRMED','IN_PROGRESS','COMPLETED','CANCELLED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "MessageChannel" AS ENUM ('SMS','WHATSAPP'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "MessageStatus" AS ENUM ('PENDING','SENT','FAILED','DELIVERED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+    `;
+    try {
+      await client.query(ENUM_CREATE_SQL);
+    } catch (enumErr) {
+      console.warn("[providers] Enum creation warning (likely already exists):", enumErr instanceof Error ? enumErr.message : enumErr);
     }
 
     // Then add ALL missing columns
@@ -81,9 +83,27 @@ async function ensureProviderColumns(): Promise<void> {
     }
 
     // Also fix the status column — it might be TEXT instead of ProviderStatus enum
+    // Normalize bad values first (NULL, empty, or invalid strings → 'PENDING'),
+    // then ALTER COLUMN TYPE. If this fails, the prisma.provider.create() will
+    // fail with "type public.ProviderStatus does not exist" — so we log loudly.
     try {
-      await client.query(`ALTER TABLE "Provider" ALTER COLUMN "status" TYPE "ProviderStatus" USING "status"::"ProviderStatus"`);
-    } catch {}
+      // Check current column type
+      const statusColCheck = await client.query(`
+        SELECT data_type FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='Provider' AND column_name='status'
+        LIMIT 1
+      `);
+      const statusDataType = statusColCheck.rows[0]?.data_type;
+      if (statusDataType === 'text' || statusDataType === 'character varying') {
+        console.log("[providers] Provider.status is TEXT — converting to ProviderStatus enum...");
+        await client.query(`UPDATE "Provider" SET "status" = 'PENDING' WHERE "status" IS NULL OR "status"::text NOT IN ('PENDING','APPROVED','REJECTED','SUSPENDED')`);
+        await client.query(`ALTER TABLE "Provider" ALTER COLUMN "status" TYPE "ProviderStatus" USING "status"::"ProviderStatus"`);
+        console.log("[providers] Provider.status converted to ProviderStatus enum.");
+      }
+    } catch (statusErr) {
+      // Don't swallow this — log loudly so we can debug if prisma.provider.create() fails
+      console.error("[providers] Failed to convert Provider.status to ProviderStatus enum:", statusErr instanceof Error ? statusErr.message : statusErr);
+    }
 
     await client.end();
   } catch (err) {
