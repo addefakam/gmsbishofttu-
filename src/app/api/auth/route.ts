@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
 
     if (!username || !password) {
       return NextResponse.json(
-        { error: "ስርዓቱን ለመጠቀም እስከ ኦክቶበር 1/2026 ድረስ የሲስተም አድሚኑን ያነጋግሩ እና የደንበኝነት ክፍያውን ይክፈሉ:: 0913169652" },
+        { error: "የሙከራ ጊዜው በስኬት ተጠናቋል፤ አገልግሎቱ ከፖሊስ ኦፊሴላዊ መግለጫ በኋላ ይጀመራል።" },
         { status: 400 }
       );
     }
@@ -242,7 +242,7 @@ export async function POST(req: NextRequest) {
       if (result.rows.length === 0) {
         await client.end();
         return NextResponse.json(
-          { error: "ስርዓቱን ለመጠቀም እስከ ኦክቶበር 1/2026 ድረስ የሲስተም አድሚኑን ያነጋግሩ እና የደንበኝነት ክፍያውን ይክፈሉ:: 0913169652" },
+          { error: "የሙከራ ጊዜው በስኬት ተጠናቋል፤ አገልግሎቱ ከፖሊስ ኦፊሴላዊ መግለጫ በኋላ ይጀመራል።" },
           { status: 401 }
         );
       }
@@ -264,7 +264,7 @@ export async function POST(req: NextRequest) {
 
     if (!user) {
       return NextResponse.json(
-        { error: "ስርዓቱን ለመጠቀም እስከ ኦክቶበር 1/2026 ድረስ የሲስተም አድሚኑን ያነጋግሩ እና የደንበኝነት ክፍያውን ይክፈሉ:: 0913169652" },
+        { error: "የሙከራ ጊዜው በስኬት ተጠናቋል፤ አገልግሎቱ ከፖሊስ ኦፊሴላዊ መግለጫ በኋላ ይጀመራል።" },
         { status: 401 }
       );
     }
@@ -273,7 +273,7 @@ export async function POST(req: NextRequest) {
     const valid = await verifyPassword(password, user.password);
     if (!valid) {
       return NextResponse.json(
-        { error: "ስርዓቱን ለመጠቀም እስከ ኦክቶበር 1/2026 ድረስ የሲስተም አድሚኑን ያነጋግሩ እና የደንበኝነት ክፍያውን ይክፈሉ:: 0913169652" },
+        { error: "የሙከራ ጊዜው በስኬት ተጠናቋል፤ አገልግሎቱ ከፖሊስ ኦፊሴላዊ መግለጫ በኋላ ይጀመራል።" },
         { status: 401 }
       );
     }
