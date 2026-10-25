@@ -28,6 +28,7 @@
  * type doesn't match the enum type Prisma expects.
  */
 import { ensureDatabase } from "./init-db";
+import { db } from "./db";
 
 let _providerEnumChecked = false;
 let _providerEnumPromise: Promise<void> | null = null;
@@ -57,17 +58,21 @@ export async function ensureProviderStatusEnum(): Promise<void> {
       // Vercel returns an empty body — the frontend then fails with
       // "Unexpected end of JSON input".
       //
-      // Instead, log the error and mark as checked so we don't retry
-      // on EVERY request (which would multiply the problem). The actual
-      // Prisma query will fail with a proper JSON error if the column
-      // is still TEXT — that error is caught by the handler's try/catch.
+      // Instead, log the FULL error (stack + message) so the real cause
+      // shows up in `next dev` console / Vercel logs, and mark as checked
+      // so we don't retry on EVERY request. The actual Prisma query will
+      // fail with a proper JSON error if the column is still TEXT — that
+      // error is caught by the handler's try/catch.
       _providerEnumAttempts++;
+      const errObj = err instanceof Error ? err : new Error(String(err));
       console.error(
         `[ensureProviderStatusEnum] Attempt ${_providerEnumAttempts}/${MAX_ENUM_ATTEMPTS} failed:`,
-        err instanceof Error ? err.message : err
+        errObj.message,
+        "\n[ensureProviderStatusEnum] Full error:\n",
+        errObj.stack || errObj
       );
       if (_providerEnumAttempts >= MAX_ENUM_ATTEMPTS) {
-        console.error(`[ensureProviderStatusEnum] Giving up after ${MAX_ENUM_ATTEMPTS} attempts — column may still be TEXT. Subsequent Prisma queries will fail with their own error messages.`);
+        console.error(`[ensureProviderStatusEnum] Giving up after ${MAX_ENUM_ATTEMPTS} attempts — Provider.status column may still be TEXT. Subsequent Prisma queries will fail with: 'operator does not exist: text = "ProviderStatus"' (42883). To fix the DB directly, run scripts/fix-provider-status.sql via psql.`);
         _providerEnumChecked = true;
       }
       // Reset the promise so the next call can retry (up to MAX_ENUM_ATTEMPTS).
@@ -82,11 +87,65 @@ export async function ensureProviderStatusEnum(): Promise<void> {
  * Direct conversion of Provider.status from TEXT to ProviderStatus enum,
  * bypassing any caching in ensureDatabase(). Logs loudly on failure so we
  * can debug if Prisma queries still fail.
+ *
+ * FALLBACK STRATEGY
+ * ──────────────────
+ * Path A: open a fresh `pg.Client` against DATABASE_URL and run the ALTER.
+ *         This is the historical path. If DATABASE_URL points at a host
+ *         that needs SSL (Neon/Supabase/Aiven/Render/RDS) and our heuristic
+ *         misses it, or the local Postgres isn't running (ECONNREFUSED on a
+ *         stale `.env`), this path fails.
+ *
+ * Path B (fallback): if Path A fails for ANY reason, re-run the same SQL
+ *         via `db.$executeRawUnsafe` — i.e. through Prisma's own connection
+ *         pool. This is reliable because if Prisma was able to send the
+ *         `count()` query in the first place (which it was — that's why
+ *         the user is seeing the 42883 error), then Prisma's own
+ *         connection is healthy and can run the ALTER just fine.
  */
 async function convertProviderStatusDirectly(): Promise<void> {
+  let pgWorked = false;
+  try {
+    await convertWithPgClient();
+    pgWorked = true;
+  } catch (err) {
+    // Log the FULL error so the user can see the actual cause (ECONNREFUSED,
+    // SSL handshake failure, etc.) — not just .message.
+    const errObj = err instanceof Error ? err : new Error(String(err));
+    console.error(
+      `[ensureProviderStatusEnum] pg.Client path failed: ${errObj.message}`,
+      "\n[ensureProviderStatusEnum] pg.Client full error:\n",
+      errObj.stack || errObj
+    );
+  }
+
+  if (!pgWorked) {
+    console.log("[ensureProviderStatusEnum] Falling back to Prisma.$executeRawUnsafe (uses Prisma's own connection)...");
+    try {
+      await convertWithPrisma();
+      console.log("[ensureProviderStatusEnum] Prisma fallback completed.");
+    } catch (err) {
+      const errObj = err instanceof Error ? err : new Error(String(err));
+      console.error(
+        `[ensureProviderStatusEnum] Prisma fallback also failed: ${errObj.message}`,
+        "\n[ensureProviderStatusEnum] Prisma fallback full error:\n",
+        errObj.stack || errObj
+      );
+      // Re-throw so the outer catch in ensureProviderStatusEnum() sees it
+      // and logs the retry attempt. (The outer function still swallows
+      // it to preserve the "never throws" contract from commit 7c97bf5.)
+      throw errObj;
+    }
+  }
+}
+
+/**
+ * Path A — open a fresh pg.Client against DATABASE_URL and run the ALTER.
+ */
+async function convertWithPgClient(): Promise<void> {
   const { Client } = await import("pg");
   const url = process.env.DATABASE_URL || "";
-  const needsSsl = url.includes("supabase.co") || url.includes("neon.tech") || url.includes("sslmode=require");
+  const needsSsl = detectSslRequired(url);
 
   const client = new Client({
     connectionString: url,
@@ -193,6 +252,116 @@ async function convertProviderStatusDirectly(): Promise<void> {
   } finally {
     try { await client.end(); } catch {}
   }
+}
+
+/**
+ * Path B — run the same conversion SQL via Prisma's own connection pool.
+ * Used as a fallback when pg.Client can't connect (e.g. stale local
+ * DATABASE_URL on a deployed Vercel function, or unfamiliar SSL host).
+ */
+async function convertWithPrisma(): Promise<void> {
+  // Create the ProviderStatus enum type (idempotent).
+  await db.$executeRawUnsafe(
+    `DO $$ BEGIN CREATE TYPE "ProviderStatus" AS ENUM ('PENDING','APPROVED','REJECTED','SUSPENDED'); EXCEPTION WHEN duplicate_object THEN null; END $$`
+  );
+
+  // Check if Provider table exists.
+  const tableCheck = await db.$queryRawUnsafe<Array<{ exists: boolean }>>(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Provider') as exists`
+  );
+  if (!tableCheck[0]?.exists) return; // nothing to convert
+
+  // Check Provider.status column type.
+  const statusCol = await db.$queryRawUnsafe<Array<{ data_type: string; udt_name: string }>>(
+    `SELECT data_type, udt_name FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'Provider' AND column_name = 'status'
+     LIMIT 1`
+  );
+  if (statusCol.length === 0) return; // column doesn't exist yet
+
+  if (statusCol[0].data_type === 'USER-DEFINED' && statusCol[0].udt_name === 'ProviderStatus') {
+    // Already converted — no-op.
+    return;
+  }
+
+  if (statusCol[0].data_type !== 'text' && statusCol[0].data_type !== 'character varying') {
+    console.warn(`[ensureProviderStatusEnum] Prisma fallback: unexpected Provider.status data_type: ${statusCol[0].data_type} (udt_name=${statusCol[0].udt_name}). Skipping.`);
+    return;
+  }
+
+  console.log(`[ensureProviderStatusEnum] Prisma fallback: Provider.status is ${statusCol[0].data_type} — converting to ProviderStatus enum...`);
+
+  // Normalize bad values, then ALTER.
+  await db.$executeRawUnsafe(
+    `UPDATE "Provider" SET "status" = 'PENDING' WHERE "status" IS NULL OR "status"::text NOT IN ('PENDING','APPROVED','REJECTED','SUSPENDED')`
+  );
+  await db.$executeRawUnsafe(
+    `ALTER TABLE "Provider" ALTER COLUMN "status" TYPE "ProviderStatus" USING "status"::"ProviderStatus"`
+  );
+  console.log("[ensureProviderStatusEnum] Prisma fallback: Provider.status converted to ProviderStatus enum.");
+
+  // Same for User.role.
+  await db.$executeRawUnsafe(
+    `DO $$ BEGIN CREATE TYPE "UserRole" AS ENUM ('POLICE','SUPERUSER','OPERATOR','STAFF'); EXCEPTION WHEN duplicate_object THEN null; END $$`
+  );
+
+  const roleCol = await db.$queryRawUnsafe<Array<{ data_type: string; udt_name: string }>>(
+    `SELECT data_type, udt_name FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'User' AND column_name = 'role'
+     LIMIT 1`
+  );
+  if (roleCol.length > 0 && (roleCol[0].data_type === 'text' || roleCol[0].data_type === 'character varying')) {
+    console.log(`[ensureProviderStatusEnum] Prisma fallback: User.role is ${roleCol[0].data_type} — converting to UserRole enum...`);
+    try {
+      await db.$executeRawUnsafe(
+        `UPDATE "User" SET "role" = 'STAFF' WHERE "role" IS NULL OR "role"::text NOT IN ('POLICE','SUPERUSER','OPERATOR','STAFF')`
+      );
+      await db.$executeRawUnsafe(
+        `ALTER TABLE "User" ALTER COLUMN "role" TYPE "UserRole" USING "role"::"UserRole"`
+      );
+      console.log("[ensureProviderStatusEnum] Prisma fallback: User.role converted to UserRole enum.");
+    } catch (roleConvErr) {
+      console.error("[ensureProviderStatusEnum] Prisma fallback: failed to convert User.role:", roleConvErr instanceof Error ? roleConvErr.message : roleConvErr);
+    }
+  }
+}
+
+/**
+ * Detect whether the DATABASE_URL points at a host that requires SSL.
+ * Handles:
+ *  - Known cloud-Postgres hosts: supabase.co, neon.tech, neon.dbs.host,
+ *    aivencloud.com, render.com, *.rds.amazonaws.com, planetscale (although
+ *    PS uses MySQL), cleardb, elephantsql.com
+ *  - Explicit `sslmode=` URL param: sslmode=require/verify-ca/verify-full
+ *    → SSL required. sslmode=disable → SSL disabled.
+ *  - Default: no SSL (local Postgres / Docker).
+ */
+function detectSslRequired(url: string): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+
+  // Explicit sslmode URL param takes precedence.
+  const sslmodeMatch = lower.match(/[?&]sslmode=([^&]+)/);
+  if (sslmodeMatch) {
+    const mode = sslmodeMatch[1];
+    if (mode === 'disable') return false;
+    if (mode === 'require' || mode === 'verify-ca' || mode === 'verify-full' || mode === 'prefer') return true;
+  }
+
+  // Known cloud-Postgres hostnames.
+  const sslHosts = [
+    'supabase.co',
+    'neon.tech',
+    'neon.dbs.host',
+    'aivencloud.com',
+    'render.com',
+    '.rds.amazonaws.com',
+    'elephantsql.com',
+    'cleardb.com',
+    'digitaloceancloud.com',
+    'db.heydata.dev',
+  ];
+  return sslHosts.some(h => lower.includes(h));
 }
 
 /**
