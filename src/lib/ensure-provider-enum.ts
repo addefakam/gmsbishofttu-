@@ -88,47 +88,50 @@ export async function ensureProviderStatusEnum(): Promise<void> {
  * bypassing any caching in ensureDatabase(). Logs loudly on failure so we
  * can debug if Prisma queries still fail.
  *
- * FALLBACK STRATEGY
- * ──────────────────
- * Path A: open a fresh `pg.Client` against DATABASE_URL and run the ALTER.
- *         This is the historical path. If DATABASE_URL points at a host
- *         that needs SSL (Neon/Supabase/Aiven/Render/RDS) and our heuristic
- *         misses it, or the local Postgres isn't running (ECONNREFUSED on a
- *         stale `.env`), this path fails.
+ * STRATEGY (order flipped in this commit — Prisma first)
+ * ──────────────────────────────────────────────────────
+ * Path A (primary): run the ALTER via `db.$executeRawUnsafe` through
+ *         Prisma's own connection pool. This is the MOST reliable path
+ *         because if Prisma was able to send the `count()` query in the
+ *         first place (which it was — that's why the user is seeing the
+ *         42883 error), then Prisma's own connection is healthy and can
+ *         run the ALTER just fine. Also has no extra TLS/connection
+ *         overhead — uses Prisma's already-established pool.
  *
- * Path B (fallback): if Path A fails for ANY reason, re-run the same SQL
- *         via `db.$executeRawUnsafe` — i.e. through Prisma's own connection
- *         pool. This is reliable because if Prisma was able to send the
- *         `count()` query in the first place (which it was — that's why
- *         the user is seeing the 42883 error), then Prisma's own
- *         connection is healthy and can run the ALTER just fine.
+ * Path B (backup): if Path A fails for ANY reason, open a fresh
+ *         `pg.Client` against DATABASE_URL and run the ALTER. Useful if
+ *         Prisma's connection is somehow restricted (e.g. transaction
+ *         mode) — but rarely needed in practice.
+ *
+ * Why the flip: the original order (pg.Client first) had a 30s connection
+ * timeout that blocked the entire API request when pg.Client couldn't
+ * connect (stale local .env, unfamiliar SSL host). The Prisma path is
+ * effectively free (uses the existing pool) so it should always be first.
  */
 async function convertProviderStatusDirectly(): Promise<void> {
-  let pgWorked = false;
+  let prismaWorked = false;
   try {
-    await convertWithPgClient();
-    pgWorked = true;
+    await convertWithPrisma();
+    prismaWorked = true;
   } catch (err) {
-    // Log the FULL error so the user can see the actual cause (ECONNREFUSED,
-    // SSL handshake failure, etc.) — not just .message.
     const errObj = err instanceof Error ? err : new Error(String(err));
     console.error(
-      `[ensureProviderStatusEnum] pg.Client path failed: ${errObj.message}`,
-      "\n[ensureProviderStatusEnum] pg.Client full error:\n",
+      `[ensureProviderStatusEnum] Prisma path failed: ${errObj.message}`,
+      "\n[ensureProviderStatusEnum] Prisma full error:\n",
       errObj.stack || errObj
     );
   }
 
-  if (!pgWorked) {
-    console.log("[ensureProviderStatusEnum] Falling back to Prisma.$executeRawUnsafe (uses Prisma's own connection)...");
+  if (!prismaWorked) {
+    console.log("[ensureProviderStatusEnum] Falling back to pg.Client (fresh connection)...");
     try {
-      await convertWithPrisma();
-      console.log("[ensureProviderStatusEnum] Prisma fallback completed.");
+      await convertWithPgClient();
+      console.log("[ensureProviderStatusEnum] pg.Client fallback completed.");
     } catch (err) {
       const errObj = err instanceof Error ? err : new Error(String(err));
       console.error(
-        `[ensureProviderStatusEnum] Prisma fallback also failed: ${errObj.message}`,
-        "\n[ensureProviderStatusEnum] Prisma fallback full error:\n",
+        `[ensureProviderStatusEnum] pg.Client fallback also failed: ${errObj.message}`,
+        "\n[ensureProviderStatusEnum] pg.Client full error:\n",
         errObj.stack || errObj
       );
       // Re-throw so the outer catch in ensureProviderStatusEnum() sees it
@@ -149,7 +152,10 @@ async function convertWithPgClient(): Promise<void> {
 
   const client = new Client({
     connectionString: url,
-    connectionTimeoutMillis: 30000,
+    // Short timeout — pg.Client is only the backup path now (Prisma runs
+    // first). If pg.Client can't connect in 5s, give up and let the
+    // outer catch log it.
+    connectionTimeoutMillis: 5000,
     ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
   });
 
