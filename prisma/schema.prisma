@@ -134,7 +134,7 @@ model Provider {
   // on top of the API-level check in /api/providers POST.
   licenseNo   String          @unique
   licenseFile String          @default("")
-  status      ProviderStatus  @default(PENDING)
+  status      String          @default("PENDING")  // was ProviderStatus enum — kept as String so TEXT columns in older DBs don't trigger 42883
   latitude    Float           @default(9.02)
   longitude   Float           @default(38.75)
   approvedBy  String?
@@ -194,7 +194,7 @@ model User {
   id          String          @id @default(cuid())
   username    String          @unique
   password    String
-  role        UserRole        @default(STAFF)
+  role        String          @default("STAFF")  // was UserRole enum — kept as String so TEXT columns in older DBs don't trigger 42883
   name        String
   email       String?         @default("")
   phone       String?         @default("")
