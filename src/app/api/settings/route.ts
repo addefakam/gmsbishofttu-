@@ -23,8 +23,17 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await getAuthContext(req);
 
-    // SUPERUSER without providerId → return system config JSON
-    if (auth.role === "SUPERUSER" && !auth.providerId) {
+    // SUPERUSER → manage system-wide config JSON.
+    // (Was: `auth.role === "SUPERUSER" && !auth.providerId` — too strict.
+    //  If a SUPERUSER happened to have a providerId set (legacy account,
+    //  or selected during creation), the PUT silently fell through to the
+    //  per-provider branch, which extracts body.guestHouseName/ownerName
+    //  etc. — none of which exist on the system config payload — so it
+    //  saved DEFAULTS and never persisted configJson. Returned 200 OK,
+    //  so the frontend showed "saved" but nothing was actually stored.
+    //  The /api/providers FormData registration path then couldn't find
+    //  the auto-approve flag, and new registrations stayed PENDING.)
+    if (auth.role === "SUPERUSER") {
       const sysSettings = await db.settings.findFirst({
         where: { providerId: null },
       });
@@ -64,8 +73,10 @@ export async function PUT(req: NextRequest) {
 
     const body = await req.json();
 
-    // SUPERUSER without providerId → store as system config JSON
-    if (auth.role === "SUPERUSER" && !auth.providerId) {
+    // SUPERUSER → store as system config JSON (see GET handler for rationale).
+    // Was: `auth.role === "SUPERUSER" && !auth.providerId` — see GET for why
+    // the !auth.providerId check broke auto-approve in production.
+    if (auth.role === "SUPERUSER") {
       const existing = await db.settings.findFirst({
         where: { providerId: null },
       });
