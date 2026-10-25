@@ -196,8 +196,8 @@ model User {
   password    String
   role        String          @default("STAFF")  // was UserRole enum — kept as String so TEXT columns in older DBs don't trigger 42883
   name        String
-  email       String?         @default("")
-  phone       String?         @default("")
+  email       String          @default("")  // DB column is TEXT NOT NULL DEFAULT '' (auth/route.ts L85) — was String? which let routes send NULL and trip P2002
+  phone       String          @default("")  // same — DB column is TEXT NOT NULL DEFAULT ''
   permissions String          @default("[\"reservations\",\"guests\"]")  // JSON array of allowed pages for STAFF
   policeRank  String          @default("")  // ADMIN, DETECTIVE, OFFICER, VIEWER for POLICE role
   isActive    Boolean         @default(true)
