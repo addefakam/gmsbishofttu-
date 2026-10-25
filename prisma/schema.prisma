@@ -209,8 +209,8 @@ model User {
   // SUBCITY = filtered to one sub-city
   // WOREDA = filtered to one woreda
   jurisdictionType String  @default("CITY")
-  subCity     String?         // e.g. "Debaayyuu" — set when jurisdictionType = SUBCITY or WOREDA
-  woreda      String?         // e.g. "Dirree" — set only when jurisdictionType = WOREDA
+  subCity     String          @default("")  // DB column is TEXT NOT NULL DEFAULT '' — schema must match (was String? which let routes send NULL and trip P2002)
+  woreda      String          @default("")  // same — DB column is TEXT NOT NULL DEFAULT ''
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 

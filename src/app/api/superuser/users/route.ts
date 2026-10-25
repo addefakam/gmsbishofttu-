@@ -180,8 +180,8 @@ export async function POST(req: NextRequest) {
         providerId: providerId || null,
         isActive: isActive !== undefined ? isActive : true,
         jurisdictionType: jurisdictionType || "CITY",
-        subCity: subCity || null,
-        woreda: woreda || null,
+        subCity: subCity || "",
+        woreda: woreda || "",
       },
       select: {
         id: true,
