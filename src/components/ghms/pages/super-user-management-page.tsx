@@ -578,9 +578,11 @@ export default function SuperUserManagementPage() {
         providerId: (form.providerId && form.providerId !== "__none__") ? form.providerId : null,
         isActive: form.isActive,
         // ── Police jurisdiction ──
+        // Defensive: send "" instead of null — DB column is NOT NULL DEFAULT ''.
+        // (Backend route also coerces null → "", but be explicit at the source.)
         jurisdictionType: form.role === "POLICE" ? form.jurisdictionType : "CITY",
-        subCity: form.role === "POLICE" && form.jurisdictionType !== "CITY" ? form.subCity : null,
-        woreda: form.role === "POLICE" && form.jurisdictionType === "WOREDA" ? form.woreda : null,
+        subCity: form.role === "POLICE" && form.jurisdictionType !== "CITY" ? (form.subCity || "") : "",
+        woreda: form.role === "POLICE" && form.jurisdictionType === "WOREDA" ? (form.woreda || "") : "",
       };
       if (form.password) payload.password = form.password;
 
