@@ -5,6 +5,7 @@ import { getAuthContext, AuthError } from "@/lib/tenant";
 import { hashPassword } from "@/lib/auth-utils";
 import { isValidPhone, isValidEmail } from "@/lib/utils";
 
+import { countProviders } from "@/lib/raw-queries";
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 // GET /api/superuser/users — List ALL users across all providers with stats
 export async function GET(req: NextRequest) {
@@ -81,42 +82,11 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    // Provider count — raw SQL with cast fallback (bypasses Prisma's enum
-    // type metadata which generates $1::"ProviderStatus" and fails with
-    // 42883 when the DB column is still TEXT).
-    //
-    // Strategy: validate status against whitelist, inline as literal with
-    // explicit cast. Try with cast first (works for enum column), fall
-    // back to no-cast (works for TEXT column).
-    const VALID_PROVIDER_STATUSES = new Set(["PENDING", "APPROVED", "REJECTED", "SUSPENDED"]);
-    const countProviders = async (statusFilter?: string): Promise<number> => {
-      const safeStatus = statusFilter && VALID_PROVIDER_STATUSES.has(statusFilter) ? statusFilter : null;
-      const tryQuery = (cast: string) => {
-        if (safeStatus) {
-          return db.$queryRawUnsafe<Array<{ count: number }>>(
-            `SELECT COUNT(*)::int AS count FROM "Provider" WHERE "status" = '${safeStatus}'${cast}`
-          );
-        }
-        return db.$queryRawUnsafe<Array<{ count: number }>>(
-          `SELECT COUNT(*)::int AS count FROM "Provider"`
-        );
-      };
-      try {
-        const r = await tryQuery('::"ProviderStatus"');
-        return Number(r[0]?.count ?? 0);
-      } catch (castErr: unknown) {
-        const castMsg = castErr instanceof Error ? castErr.message : String(castErr);
-        const enumTypeMissing = castMsg.includes('type "ProviderStatus" does not exist');
-        const otherCastError = castMsg.includes("42804") || (castMsg.includes("is of type") && castMsg.includes("but expression is of type"));
-        if (enumTypeMissing || otherCastError) {
-          // Fallback: no cast (works for TEXT column)
-          const r = await tryQuery("");
-          return Number(r[0]?.count ?? 0);
-        }
-        throw castErr;
-      }
-    };
-
+    // Provider count — uses the shared countProviders() helper from
+    // @/lib/raw-queries. Bypasses Prisma's enum type metadata (which
+    // generates $1::"ProviderStatus" and fails with 42883 when the DB
+    // column is still TEXT). The helper tries with cast first (works
+    // for enum column), falls back to no-cast (works for TEXT column).
     let providerCount: number = 0;
     let activeProviderCount: number = 0;
     try {
@@ -127,7 +97,7 @@ export async function GET(req: NextRequest) {
     } catch (countErr: unknown) {
       // Last-resort: try the auto-fix (creates enum types + converts
       // TEXT columns to enum), then retry.
-      console.log("[superuser/users GET] Raw SQL count failed. Running autoFixEnumColumns() as last resort. Error:", countErr instanceof Error ? countErr.message : countErr);
+      console.log("[superuser/users GET] countProviders() failed. Running autoFixEnumColumns() as last resort. Error:", countErr instanceof Error ? countErr.message : countErr);
       try {
         const { autoFixEnumColumns } = await import("@/lib/auto-fix-enum");
         await autoFixEnumColumns();

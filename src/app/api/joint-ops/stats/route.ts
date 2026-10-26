@@ -1,3 +1,4 @@
+import { countProviders } from "@/lib/raw-queries";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyToken } from "@/lib/auth-utils";
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
     const [totalUsers, totalProviders, totalGuests, totalRooms, totalReservations] =
       await Promise.all([
         db.user.count(),
-        db.provider.count(),
+        countProviders(),
         db.guest.count(),
         db.room.count(),
         db.reservation.count(),
