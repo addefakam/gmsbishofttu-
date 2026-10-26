@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
               data: {
                 number: String(number),
                 name: name ? String(name) : `Room ${number}`,
-                type: String(type).toUpperCase() as import("@prisma/client").RoomType,
+                type: String(type).toUpperCase(),  // String field — no enum cast (was: as RoomType, broke after schema change to String)
                 pricePerNight: pricePerNight == null || pricePerNight === "" ? 0 : Number(pricePerNight),
                 // Weekend price is optional — null/empty/0 means "use weekday rate for all nights"
                 pricePerNightWeekend: pricePerNightWeekend == null || pricePerNightWeekend === "" ? null : Number(pricePerNightWeekend),
@@ -240,7 +240,7 @@ export async function POST(req: NextRequest) {
                 data: {
                   number: String(number),
                   name: name ? String(name) : `Room ${number}`,
-                  type: String(type).toUpperCase() as import("@prisma/client").RoomType,
+                  type: String(type).toUpperCase(),  // String field — no enum cast (was: as RoomType, broke after schema change to String)
                   pricePerNight: pricePerNight == null || pricePerNight === "" ? 0 : Number(pricePerNight),
                   floor: Number(floor),
                   capacity: Number(capacity),
