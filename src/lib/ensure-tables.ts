@@ -5,6 +5,16 @@
  * The setupDone flag caches this so it only runs once per cold start.
  *
  * ensureOwnerTables() creates the 3 new owner feature tables. Also cached.
+ *
+ * ensureGroupBookingTable() and ensureCriticalTables() are STANDALONE
+ * table-creation helpers that bypass ensureDatabase() entirely. They use
+ * Prisma's $executeRawUnsafe directly. This is critical because
+ * ensureDatabase() can silently fail (cached _initDone=true from a previous
+ * failed cold start, SSL handshake issue on pg.Client, exception-swallowing
+ * EXCEPTION WHEN OTHERS THEN null in TABLES_SQL, etc.). Routes that JOIN to
+ * these tables (e.g. /api/reservations LEFT JOIN GroupBooking) MUST call
+ * the standalone helpers at the top, OR they 500 with 42P01 'relation
+ * "X" does not exist' if the table was never created.
  */
 import { ensureDatabase, resetInitFlag } from "./init-db";
 import { db } from "./db";
@@ -25,9 +35,88 @@ export async function ensureOwnerTables(): Promise<void> {
   }
 }
 
+// ─── Standalone GroupBooking ensure ──────────────────────────────────────────
+// WHY THIS EXISTS
+// /api/reservations GET does `LEFT JOIN "GroupBooking" gb ON ...`. If the
+// GroupBooking table doesn't exist (because ensureDatabase() silently failed
+// on a previous cold start and the result was cached), Postgres throws
+// 42P01 'relation "GroupBooking" does not exist'. This function creates
+// the table directly via Prisma's own connection pool — no dependency on
+// pg.Client, no dependency on ensureDatabase()'s _initDone cache flag.
+// All columns are TEXT (no enum-type dependency) so the CREATE always
+// succeeds regardless of DB state.
+
+let _groupBookingEnsured = false;
+export async function ensureGroupBookingTable(): Promise<void> {
+  if (_groupBookingEnsured) return;
+  _groupBookingEnsured = true;
+  try {
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "GroupBooking" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "name" TEXT NOT NULL,
+        "contactName" TEXT NOT NULL DEFAULT '',
+        "contactPhone" TEXT NOT NULL DEFAULT '',
+        "contactEmail" TEXT NOT NULL DEFAULT '',
+        "startDate" TEXT NOT NULL,
+        "endDate" TEXT NOT NULL,
+        "notes" TEXT NOT NULL DEFAULT '',
+        "status" TEXT NOT NULL DEFAULT 'PENDING',
+        "totalRooms" INTEGER NOT NULL DEFAULT 0,
+        "totalGuests" INTEGER NOT NULL DEFAULT 0,
+        "totalCost" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "discountType" TEXT NOT NULL DEFAULT 'AMOUNT',
+        "discountAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "providerId" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    // Also ensure the groupBookingId column exists on Reservation (the FK
+    // target). Older DBs may not have this column yet — without it, the
+    // LEFT JOIN itself fails with 42703 'column r.groupBookingId does
+    // not exist'.
+    try {
+      await db.$executeRawUnsafe(`DO $$ BEGIN ALTER TABLE "Reservation" ADD COLUMN "groupBookingId" TEXT; EXCEPTION WHEN duplicate_column THEN null; END $$`);
+    } catch {}
+    // Add FK if not exists (idempotent — swallow duplicate_object)
+    try {
+      await db.$executeRawUnsafe(`DO $$ BEGIN ALTER TABLE "Reservation" ADD CONSTRAINT "Reservation_groupBookingId_fkey" FOREIGN KEY ("groupBookingId") REFERENCES "GroupBooking"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`);
+    } catch {}
+  } catch (err) {
+    // Non-blocking — log the real error so it's debuggable. Reset the flag
+    // so the next call can retry.
+    _groupBookingEnsured = false;
+    console.error("[ensureGroupBookingTable] Failed:", err instanceof Error ? err.message : err);
+  }
+}
+
+// ─── Standalone ensure for other tables commonly JOINed in raw SQL ─────────
+// Same pattern — bypass ensureDatabase() and use Prisma's connection pool.
+// Add to this list as more 42P01 errors surface.
+
+let _criticalTablesEnsured = false;
+export async function ensureCriticalTables(): Promise<void> {
+  if (_criticalTablesEnsured) return;
+  _criticalTablesEnsured = true;
+  try {
+    // GroupBooking is the most common 42P01 culprit (LEFT JOIN'd in
+    // /api/reservations GET raw SQL).
+    await ensureGroupBookingTable();
+  } catch (err) {
+    _criticalTablesEnsured = false;
+    console.error("[ensureCriticalTables] Failed:", err instanceof Error ? err.message : err);
+  }
+}
+
 export async function ensureNewTables(): Promise<void> {
   // Always ensure the 3 owner feature tables exist
   await ensureOwnerTables();
+
+  // Always ensure GroupBooking + other critical JOIN targets exist.
+  // This bypasses ensureDatabase() entirely — no _initDone cache, no
+  // pg.Client dependency. Runs every cold start via Prisma's own pool.
+  await ensureCriticalTables();
 
   if (setupDone) return;
   if (setupPromise) { await setupPromise; return; }

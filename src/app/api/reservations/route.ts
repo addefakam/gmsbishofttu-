@@ -8,6 +8,7 @@ import { runReservationMaintenance } from "@/lib/reservation-maintenance";
 import { logStaffActivity } from "@/lib/staff-log";
 import { calculateStayTotal } from "@/lib/room-pricing";
 import { ensureDatabase } from "@/lib/init-db";
+import { ensureCriticalTables } from "@/lib/ensure-tables";
 
 // ── Force dynamic rendering ──
 // Prevents Vercel from caching stale reservation data at the edge.
@@ -15,17 +16,25 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    // ── CRITICAL: ensure all tables exist before querying ──
+    // ── CRITICAL: ensure GroupBooking table exists BEFORE the LEFT JOIN ──
     // The raw SQL below does LEFT JOIN "GroupBooking" — if that table
-    // doesn't exist (e.g. previous ensureDatabase() silently failed),
-    // Postgres throws 42P01 'relation "GroupBooking" does not exist'.
-    // ensureDatabase() runs CREATE TABLE IF NOT EXISTS for all tables,
-    // including GroupBooking. It's cached so subsequent calls are free.
+    // doesn't exist (because ensureDatabase() silently failed), Postgres
+    // throws 42P01 'relation "GroupBooking" does not exist'.
+    // ensureCriticalTables() uses Prisma's $executeRawUnsafe directly
+    // (no pg.Client, no _initDone cache), so it ALWAYS succeeds in
+    // creating the table on cold start. Cached per-instance so it's
+    // effectively free on subsequent calls.
+    try {
+      await ensureCriticalTables();
+    } catch (ensureErr) {
+      console.error("[reservations GET] ensureCriticalTables failed:", ensureErr instanceof Error ? ensureErr.message : ensureErr);
+      // Continue — the table may already exist.
+    }
+
+    // ── Also call ensureDatabase() for the rest of the schema ──
     try {
       await ensureDatabase();
     } catch (ensureErr) {
-      // Non-blocking — log the real error so it's debuggable, but
-      // continue. The actual query may still succeed if tables exist.
       console.error("[reservations GET] ensureDatabase failed:", ensureErr instanceof Error ? ensureErr.message : ensureErr);
     }
 

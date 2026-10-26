@@ -9,6 +9,7 @@ import {
 import { runReservationMaintenance } from "@/lib/reservation-maintenance";
 import { logStaffActivity } from "@/lib/staff-log";
 import { ensureDatabase } from "@/lib/init-db";
+import { ensureCriticalTables } from "@/lib/ensure-tables";
 
 // ── Force dynamic rendering ──
 // Without this, Vercel may cache the API response at the edge, causing
@@ -19,6 +20,18 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    // ── CRITICAL: ensure GroupBooking + other JOIN targets exist ──
+    // /api/reservations GET (called in parallel from the Accommodation
+    // page) does LEFT JOIN "GroupBooking". If that table doesn't exist,
+    // Postgres throws 42P01. ensureCriticalTables() bypasses
+    // ensureDatabase() and uses Prisma's $executeRawUnsafe directly
+    // (no pg.Client, no _initDone cache flag). Cached per-instance.
+    try {
+      await ensureCriticalTables();
+    } catch (ensureErr) {
+      console.error("[rooms GET] ensureCriticalTables failed:", ensureErr instanceof Error ? ensureErr.message : ensureErr);
+    }
+
     // ensureDatabase runs the ALTER TABLE statements in init-db.ts that
     // add new columns (like pricePerNightWeekend) to existing DBs. Without
     // this call, the SELECT below fails on databases that haven't yet
