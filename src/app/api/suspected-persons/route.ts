@@ -165,30 +165,81 @@ export async function POST(req: NextRequest) {
     const primaryId = idNumber || "";
     const primaryIdType = normalizeIdType(idType || "") || "";
 
-    // ── INSERT via raw SQL — bypass Prisma's runtime type validator ──
-    // After commit 6e0c0cf changed severity from SuspectSeverity enum to
-    // String, the Prisma runtime validator still has cached enum metadata
-    // and rejects "CRITICAL" with:
-    //   "Error converting field 'severity' of expected non-nullable type
-    //    'String', found incompatible value of 'CRITICAL'"
-    // even though the schema clearly says String. This is the same
-    // Prisma-runtime-cache bug we hit on Room.type (commit 6b00173).
-    // Solution: use Prisma.sql tagged template (db.$executeRaw) which
-    // bypasses the model type validator entirely — it's just raw SQL.
+    // ── INSERT via raw SQL with literal+caset — bypass Prisma's runtime
+    //    validator AND handle both TEXT and enum column types ──
+    //
+    // Why this is needed:
+    // 1. Prisma's runtime type validator still has cached enum metadata
+    //    after commit 6e0c0cf changed severity from SuspectSeverity enum
+    //    to String. Native db.suspectedPerson.create() fails with:
+    //      "Error converting field 'severity' of expected non-nullable
+    //       type 'String', found incompatible value of 'CRITICAL'"
+    // 2. Different DBs have different column states:
+    //      - Some: severity column is TEXT (older deploy, before enum
+    //        types were set up)
+    //      - Others: severity column is SuspectSeverity enum (newer
+    //        deploy, enum types created first)
+    //    A parameterized INSERT (db.$executeRawUnsafe with $1) sends the
+    //    value as text via the extended query protocol — Postgres can't
+    //    cast text → enum implicitly → 42804 error.
+    //
+    // Solution: validate severity against a whitelist, INLINE it as a
+    // SQL literal with explicit cast. Safe because enum values come
+    // from a closed set (no SQL injection risk).
+    const VALID_SUSPECT_SEVERITIES = new Set(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+    const safeSeverity = VALID_SUSPECT_SEVERITIES.has(String(severity || "").toUpperCase())
+      ? String(severity || "").toUpperCase()
+      : "MEDIUM";
+
     const personId = `sus_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    const severityValue = String(severity || "MEDIUM");
-    await db.$executeRaw(Prisma.sql`
-      INSERT INTO "SuspectedPerson"
-        ("id", "name", "phone", "idNumber", "idType", "nationality",
-         "address", "description", "severity", "is_active", "registeredBy",
-         "createdAt", "updatedAt")
-      VALUES
-        (${personId}, ${name.trim()}, ${phone || ""}, ${primaryId},
-         ${primaryIdType}, ${normalizeNationality(nationality || "")},
-         ${address || ""}, ${description || ""}, ${severityValue},
-         true, ${auth.role},
-         NOW(), NOW())
-    `);
+
+    // Other (non-enum) parameters — still parameterized for safety.
+    const otherParams = [
+      personId, name.trim(), phone || "", primaryId,
+      primaryIdType, normalizeNationality(nationality || ""),
+      address || "", description || "", auth.role,
+    ];
+
+    // Attempt 1: with cast (works for enum column)
+    try {
+      await db.$executeRawUnsafe(
+        `INSERT INTO "SuspectedPerson"
+          ("id", "name", "phone", "idNumber", "idType", "nationality",
+           "address", "description", "severity", "is_active", "registeredBy",
+           "createdAt", "updatedAt")
+         VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8, '${safeSeverity}'::"SuspectSeverity",
+           true, $9, NOW(), NOW())`,
+        ...otherParams
+      );
+    } catch (castErr: unknown) {
+      const castMsg = castErr instanceof Error ? castErr.message : String(castErr);
+      const enumTypeMissing = castMsg.includes('type "SuspectSeverity" does not exist') || castMsg.includes('SuspectSeverity does not exist');
+      const otherCastError = castMsg.includes("42804") || (castMsg.includes("is of type") && castMsg.includes("but expression is of type"));
+
+      if (enumTypeMissing || otherCastError) {
+        // Attempt 2: no cast (works for TEXT column)
+        console.log(`[suspected-persons POST] Cast INSERT failed (column is TEXT or enum type missing). Retrying without cast. Error: ${castMsg}`);
+        try {
+          await db.$executeRawUnsafe(
+            `INSERT INTO "SuspectedPerson"
+              ("id", "name", "phone", "idNumber", "idType", "nationality",
+               "address", "description", "severity", "is_active", "registeredBy",
+               "createdAt", "updatedAt")
+             VALUES
+              ($1, $2, $3, $4, $5, $6, $7, $8, '${safeSeverity}',
+               true, $9, NOW(), NOW())`,
+            ...otherParams
+          );
+        } catch (noCastErr: unknown) {
+          // Both paths failed — re-throw the no-cast error (more useful
+          // for debugging since it shows the actual column state).
+          throw noCastErr;
+        }
+      } else {
+        throw castErr;
+      }
+    }
 
     // Fetch the created record (also via raw SQL to stay consistent).
     const persons = await db.$queryRawUnsafe<Array<Record<string, unknown>>>(
