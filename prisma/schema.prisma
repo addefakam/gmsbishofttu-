@@ -234,7 +234,7 @@ model Room {
   id            String     @id @default(cuid())
   number        String
   name          String
-  type          RoomType
+  type          String            @default("STANDARD")  // was RoomType enum — TEXT in DB trips 42883
   pricePerNight Float
   // Optional weekend rate — if set, applies to Friday + Saturday nights
   // (Ethiopian weekend). If null or 0, falls back to pricePerNight for
@@ -243,7 +243,7 @@ model Room {
   pricePerNightWeekend Float?
   floor         Int
   capacity      Int
-  status        RoomStatus @default(AVAILABLE)
+  status        String            @default("AVAILABLE")  // was RoomStatus enum — TEXT in DB trips 42883
   amenities     String
   description   String
   image         String?
@@ -312,9 +312,9 @@ model Reservation {
   totalCost       Float
   paidAmount      Float             @default(0)
   balance         Float             @default(0)
-  paymentStatus   PaymentStatusType @default(PENDING)
-  paymentMethod   PaymentMethodType?
-  status          ReservationStatus @default(UPCOMING)
+  paymentStatus   String            @default("PENDING")  // was PaymentStatusType enum
+  paymentMethod   String?            // was PaymentMethodType? enum — nullable when no payment yet
+  status          String            @default("UPCOMING")  // was ReservationStatus enum
   notes           String            @default("")
   actualCheckIn   DateTime?
   actualCheckOut  DateTime?
@@ -378,8 +378,8 @@ model DaytimeBooking {
   unitPrice      Float
   totalCost      Float
   paidAmount     Float             @default(0)
-  paymentStatus  PaymentStatusType @default(PENDING)
-  paymentMethod  PaymentMethodType?
+  paymentStatus  String            @default("PENDING")  // was PaymentStatusType enum (DaytimeBooking + DaytimeRoomBooking)
+  paymentMethod  String?            // was PaymentMethodType? enum — nullable when no payment yet
   notes          String            @default("")
   providerId     String
   createdAt      DateTime          @default(now())
@@ -412,10 +412,10 @@ model DaytimeRoomBooking {
   roomRate       Float             // hourly rate (ETB/hour)
   totalCost      Float             // totalHours * roomRate
   paidAmount     Float             @default(0)
-  paymentStatus  PaymentStatusType @default(PENDING)
-  paymentMethod  PaymentMethodType?
+  paymentStatus  String            @default("PENDING")  // was PaymentStatusType enum (DaytimeBooking + DaytimeRoomBooking)
+  paymentMethod  String?            // was PaymentMethodType? enum — nullable when no payment yet
   notes          String            @default("")
-  status         ReservationStatus @default(UPCOMING)
+  status         String            @default("UPCOMING")  // was ReservationStatus enum (DaytimeRoomBooking)
   providerId     String
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -439,7 +439,7 @@ model Expense {
   description   String
   amount        Float
   vendor        String            @default("")
-  paymentMethod PaymentMethodType
+  paymentMethod String            @default("CASH")  // was PaymentMethodType enum (Expense)
   receiptNo     String            @default("")
   taxAmount     Float             @default(0)
   providerId    String
@@ -515,7 +515,7 @@ model Payment {
   daytimeBookingId String?
   daytimeRoomBookingId String?
   amount           Float
-  method           PaymentMethodType
+  method           String            @default("CASH")  // was PaymentMethodType enum (Payment)
   referenceNo      String            @default("")
   notes            String            @default("")
   providerId       String
@@ -536,7 +536,7 @@ model Notification {
   id        String           @id @default(cuid())
   title     String
   message   String
-  type      NotificationType @default(INFO)
+  type      String           @default("INFO")  // was NotificationType enum
   isRead    Boolean          @default(false)
   link      String?
   providerId String?
@@ -554,8 +554,8 @@ model Notification {
 model HousekeepingTask {
   id            String                 @id @default(cuid())
   roomId        String
-  type          HousekeepingTaskType
-  status        HousekeepingTaskStatus @default(PENDING)
+  type          String            @default("CLEANING")  // was HousekeepingTaskType enum
+  status        String            @default("PENDING")  // was HousekeepingTaskStatus enum
   assignedTo    String?
   scheduledDate String
   notes         String                 @default("")
@@ -888,7 +888,7 @@ model SuspectedPerson {
   nationality   String           @default("")
   address       String           @default("")
   description   String           @default("")
-  severity      SuspectSeverity  @default(MEDIUM)
+  severity      String           @default("MEDIUM")  // was SuspectSeverity enum
   is_active     Boolean          @default(true)
   registeredBy  String           @default("")
   createdAt     DateTime         @default(now())
