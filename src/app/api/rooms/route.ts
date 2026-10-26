@@ -21,6 +21,19 @@ import { ensureCriticalTables } from "@/lib/ensure-tables";
 // even though the schema says String. Using Prisma.sql tagged template
 // sends parameterized SQL directly to Postgres — no model type metadata,
 // no runtime validator, no enum cache.
+//
+// HANDLES BOTH COLUMN TYPES
+// Different DBs have different states for the type/status columns:
+//   - Some DBs: column is TEXT (created by older code before enum types
+//     were set up; CREATE TABLE IF NOT EXISTS was a no-op on existing
+//     tables, so the column stayed TEXT)
+//   - Other DBs: column is the proper enum type (RoomType / RoomStatus)
+//     — created by newer code where the enum types were set up first
+//
+// Strategy:
+//   1. First try INSERT with value as plain text (works for TEXT columns)
+//   2. If 42804 'column is of type X but expression is of type text',
+//      retry with explicit cast (works for enum columns)
 async function createRoomRaw(opts: {
   number: string;
   name: string;
@@ -35,42 +48,79 @@ async function createRoomRaw(opts: {
   providerId: string;
 }): Promise<Record<string, unknown>> {
   const id = `room_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  // Step 1: try INSERT with pricePerNightWeekend (column exists on most DBs
-  // after ensureDatabase() runs the ALTER TABLE).
+
+  // Two INSERT variants — one without cast (for TEXT columns), one with
+  // cast (for enum columns). Try the no-cast version first.
+  const buildInsertSql = (typeCast: "" | "::\"RoomType\"", statusCast: "" | "::\"RoomStatus\"") => `
+    INSERT INTO "Room"
+      ("id", "number", "name", "type", "pricePerNight", "pricePerNightWeekend",
+       "floor", "capacity", "status", "amenities", "description", "image",
+       "providerId", "createdAt", "updatedAt")
+    VALUES
+      ($1, $2, $3, $4${typeCast}, $5, $6, $7, $8, $9${statusCast}, $10, $11, $12, $13, NOW(), NOW())
+  `;
+  const buildInsertSqlNoWeekend = (typeCast: "" | "::\"RoomType\"", statusCast: "" | "::\"RoomStatus\"") => `
+    INSERT INTO "Room"
+      ("id", "number", "name", "type", "pricePerNight",
+       "floor", "capacity", "status", "amenities", "description", "image",
+       "providerId", "createdAt", "updatedAt")
+    VALUES
+      ($1, $2, $3, $4${typeCast}, $5, $6, $7, $8${statusCast}, $9, $10, $11, $12, NOW(), NOW())
+  `;
+
+  const params = [
+    id, opts.number, opts.name, opts.type, opts.pricePerNight,
+    opts.pricePerNightWeekend, opts.floor, opts.capacity,
+    "AVAILABLE", opts.amenities, opts.description, opts.image, opts.providerId,
+  ];
+  const paramsNoWeekend = [
+    id, opts.number, opts.name, opts.type, opts.pricePerNight,
+    opts.floor, opts.capacity,
+    "AVAILABLE", opts.amenities, opts.description, opts.image, opts.providerId,
+  ];
+
+  // Attempt 1: no cast (works if columns are TEXT)
   try {
-    await db.$executeRaw(Prisma.sql`
-      INSERT INTO "Room"
-        ("id", "number", "name", "type", "pricePerNight", "pricePerNightWeekend",
-         "floor", "capacity", "status", "amenities", "description", "image",
-         "providerId", "createdAt", "updatedAt")
-      VALUES
-        (${id}, ${opts.number}, ${opts.name}, ${opts.type}, ${opts.pricePerNight},
-         ${opts.pricePerNightWeekend}, ${opts.floor}, ${opts.capacity},
-         'AVAILABLE', ${opts.amenities}, ${opts.description}, ${opts.image},
-         ${opts.providerId}, NOW(), NOW())
-    `);
+    await db.$executeRawUnsafe(buildInsertSql("", ""), ...params);
   } catch (insertErr: unknown) {
     const msg = insertErr instanceof Error ? insertErr.message : String(insertErr);
-    // Fallback: pricePerNightWeekend column doesn't exist on this DB yet.
-    // Retry without it (weekend price will be null).
-    if (msg.includes("pricePerNightWeekend") && msg.includes("does not exist")) {
-      console.warn("[rooms POST] pricePerNightWeekend column not found — retrying without it.");
-      await db.$executeRaw(Prisma.sql`
-        INSERT INTO "Room"
-          ("id", "number", "name", "type", "pricePerNight",
-           "floor", "capacity", "status", "amenities", "description", "image",
-           "providerId", "createdAt", "updatedAt")
-        VALUES
-          (${id}, ${opts.number}, ${opts.name}, ${opts.type}, ${opts.pricePerNight},
-           ${opts.floor}, ${opts.capacity},
-           'AVAILABLE', ${opts.amenities}, ${opts.description}, ${opts.image},
-           ${opts.providerId}, NOW(), NOW())
-      `);
+
+    // Attempt 2: column is enum — retry with explicit cast
+    if (msg.includes("42804") || (msg.includes("is of type") && msg.includes("but expression is of type text"))) {
+      console.log("[createRoomRaw] No-cast INSERT failed (column is enum). Retrying with ::\"RoomType\"/::\"RoomStatus\" cast...");
+      try {
+        await db.$executeRawUnsafe(buildInsertSql("::\"RoomType\"", "::\"RoomStatus\""), ...params);
+      } catch (castErr: unknown) {
+        const castMsg = castErr instanceof Error ? castErr.message : String(castErr);
+        // Attempt 3: pricePerNightWeekend column doesn't exist — retry without it
+        if (castMsg.includes("pricePerNightWeekend") && castMsg.includes("does not exist")) {
+          console.warn("[createRoomRaw] pricePerNightWeekend column missing — retrying without it (with cast).");
+          await db.$executeRawUnsafe(buildInsertSqlNoWeekend("::\"RoomType\"", "::\"RoomStatus\""), ...paramsNoWeekend);
+        } else {
+          throw castErr;
+        }
+      }
+    } else if (msg.includes("pricePerNightWeekend") && msg.includes("does not exist")) {
+      // Attempt 3 (TEXT path): pricePerNightWeekend column doesn't exist — retry without it
+      console.warn("[createRoomRaw] pricePerNightWeekend column missing — retrying without it (no cast).");
+      try {
+        await db.$executeRawUnsafe(buildInsertSqlNoWeekend("", ""), ...paramsNoWeekend);
+      } catch (retryErr: unknown) {
+        const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+        // If retry fails with 42804, try once more with cast
+        if (retryMsg.includes("42804") || (retryMsg.includes("is of type") && retryMsg.includes("but expression is of type text"))) {
+          console.log("[createRoomRaw] No-weekend no-cast failed (column is enum). Retrying with cast.");
+          await db.$executeRawUnsafe(buildInsertSqlNoWeekend("::\"RoomType\"", "::\"RoomStatus\""), ...paramsNoWeekend);
+        } else {
+          throw retryErr;
+        }
+      }
     } else {
-      throw insertErr; // Re-throw unknown errors
+      throw insertErr; // Different error — re-throw
     }
   }
-  // Step 2: fetch the created record (also via raw SQL — consistent)
+
+  // Fetch the created record
   const rows = await db.$queryRawUnsafe<Array<Record<string, unknown>>>(
     `SELECT * FROM "Room" WHERE "id" = $1`,
     id
