@@ -165,24 +165,48 @@ export async function POST(req: NextRequest) {
     const primaryId = idNumber || "";
     const primaryIdType = normalizeIdType(idType || "") || "";
 
-    const person = await db.suspectedPerson.create({
-      data: {
-        name: name.trim(),
-        phone: phone || "",
-        idNumber: primaryId,
-        idType: primaryIdType,
-        // Normalize nationality too so suspect records use the same
-        // canonical forms as guests.
-        nationality: normalizeNationality(nationality || ""),
-        address: address || "",
-        description: description || "",
-        severity: severity || "MEDIUM",
-        registeredBy: auth.role,
-      },
-      include: {
-        _count: { select: { matches: true } },
-      },
-    });
+    // ── INSERT via raw SQL — bypass Prisma's runtime type validator ──
+    // After commit 6e0c0cf changed severity from SuspectSeverity enum to
+    // String, the Prisma runtime validator still has cached enum metadata
+    // and rejects "CRITICAL" with:
+    //   "Error converting field 'severity' of expected non-nullable type
+    //    'String', found incompatible value of 'CRITICAL'"
+    // even though the schema clearly says String. This is the same
+    // Prisma-runtime-cache bug we hit on Room.type (commit 6b00173).
+    // Solution: use Prisma.sql tagged template (db.$executeRaw) which
+    // bypasses the model type validator entirely — it's just raw SQL.
+    const personId = `sus_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const severityValue = String(severity || "MEDIUM");
+    await db.$executeRaw(Prisma.sql`
+      INSERT INTO "SuspectedPerson"
+        ("id", "name", "phone", "idNumber", "idType", "nationality",
+         "address", "description", "severity", "is_active", "registeredBy",
+         "createdAt", "updatedAt")
+      VALUES
+        (${personId}, ${name.trim()}, ${phone || ""}, ${primaryId},
+         ${primaryIdType}, ${normalizeNationality(nationality || "")},
+         ${address || ""}, ${description || ""}, ${severityValue},
+         true, ${auth.role},
+         NOW(), NOW())
+    `);
+
+    // Fetch the created record (also via raw SQL to stay consistent).
+    const persons = await db.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `SELECT * FROM "SuspectedPerson" WHERE "id" = $1`,
+      personId
+    );
+    const person = persons[0] ?? { id: personId };
+
+    // matches count — also via raw SQL (avoids Prisma model includes)
+    let matchCount = 0;
+    try {
+      const mc = await db.$queryRawUnsafe<Array<{ count: bigint | number }>>(
+        `SELECT COUNT(*)::int AS count FROM "SuspectMatch" WHERE "suspectedPersonId" = $1`,
+        personId
+      );
+      matchCount = Number(mc[0]?.count ?? 0);
+    } catch {}
+    (person as Record<string, unknown>)._count = { matches: matchCount };
 
     // Create SuspectId records for all provided identifiers — also
     // normalized so multi-ID suspects have consistent types.
