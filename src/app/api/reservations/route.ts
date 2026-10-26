@@ -7,6 +7,7 @@ import { isValidPhone } from "@/lib/utils";
 import { runReservationMaintenance } from "@/lib/reservation-maintenance";
 import { logStaffActivity } from "@/lib/staff-log";
 import { calculateStayTotal } from "@/lib/room-pricing";
+import { ensureDatabase } from "@/lib/init-db";
 
 // ── Force dynamic rendering ──
 // Prevents Vercel from caching stale reservation data at the edge.
@@ -14,6 +15,20 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    // ── CRITICAL: ensure all tables exist before querying ──
+    // The raw SQL below does LEFT JOIN "GroupBooking" — if that table
+    // doesn't exist (e.g. previous ensureDatabase() silently failed),
+    // Postgres throws 42P01 'relation "GroupBooking" does not exist'.
+    // ensureDatabase() runs CREATE TABLE IF NOT EXISTS for all tables,
+    // including GroupBooking. It's cached so subsequent calls are free.
+    try {
+      await ensureDatabase();
+    } catch (ensureErr) {
+      // Non-blocking — log the real error so it's debuggable, but
+      // continue. The actual query may still succeed if tables exist.
+      console.error("[reservations GET] ensureDatabase failed:", ensureErr instanceof Error ? ensureErr.message : ensureErr);
+    }
+
     const auth = await getAuthContext(req);
     const { isPolice, providerId } = getProviderFilter(auth);
 

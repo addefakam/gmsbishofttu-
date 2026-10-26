@@ -736,7 +736,7 @@ model GroupBooking {
   startDate    String
   endDate      String
   notes        String             @default("")
-  status       GroupBookingStatus @default(PENDING)
+  status       String             @default("PENDING")  // was GroupBookingStatus enum — TEXT in DB trips 42883
   totalRooms   Int                @default(0)
   totalGuests  Int                @default(0)
   totalCost    Float              @default(0)
