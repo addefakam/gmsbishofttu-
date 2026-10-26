@@ -81,11 +81,39 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    // Provider count
-    const providerCount = await db.provider.count();
-    const activeProviderCount = await db.provider.count({
-      where: { status: "APPROVED" },
-    });
+    // Provider count — wrapped in auto-fix retry because the DB column
+    // might still be TEXT (not yet converted to enum). If the count
+    // throws 42883 'operator does not exist: text = "ProviderStatus"',
+    // run autoFixEnumColumns() and retry.
+    let providerCount: number = 0;
+    let activeProviderCount: number = 0;
+    try {
+      [providerCount, activeProviderCount] = await Promise.all([
+        db.provider.count(),
+        db.provider.count({ where: { status: "APPROVED" } }),
+      ]);
+    } catch (countErr: unknown) {
+      const msg = countErr instanceof Error ? countErr.message : String(countErr);
+      const isEnumMismatch =
+        msg.includes("42883") ||
+        msg.includes("operator does not exist") ||
+        (msg.includes("does not exist") && msg.includes("text =")) ||
+        msg.includes("42804") ||
+        (msg.includes("is of type") && msg.includes("but expression is of type"));
+
+      if (isEnumMismatch) {
+        console.log("[superuser/users GET] Provider.count() failed with enum mismatch. Auto-fixing and retrying. Error:", msg);
+        const { autoFixEnumColumns } = await import("@/lib/auto-fix-enum");
+        await autoFixEnumColumns();
+        // Retry the counts after the fix
+        [providerCount, activeProviderCount] = await Promise.all([
+          db.provider.count(),
+          db.provider.count({ where: { status: "APPROVED" } }),
+        ]);
+      } else {
+        throw countErr;
+      }
+    }
 
     const roleCounts: Record<string, number> = {};
     for (const s of stats) {
