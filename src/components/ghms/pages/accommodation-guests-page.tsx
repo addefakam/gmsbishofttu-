@@ -429,8 +429,15 @@ export default function AccommodationGuestsPage() {
 
       // History column + lifecycle badges removed — was causing slow
       // loading due to N+1 API calls (one per guest).
-    } catch {
-      toast.error(t("toastFailedLoadGuests"));
+    } catch (err) {
+      // ── Show the ACTUAL error message, not a generic toast ──
+      // Previously this was `catch {}` which threw away the real error
+      // from /api/guests | /api/reservations | /api/rooms. The user
+      // only saw "Failed to load guest data" with no clue which
+      // endpoint failed or what the actual error was.
+      console.error("[accommodation-guests] fetch failed:", err);
+      const message = err instanceof Error ? err.message : t("toastFailedLoadGuests");
+      toast.error(message);
     } finally {
       setLoading(false);
     }
