@@ -312,10 +312,45 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify recipient exists + is approved
-    const recipient = await db.provider.findFirst({
-      where: { id: toProviderId, status: "APPROVED" },
-      select: { id: true, name: true },
-    });
+    // CRITICAL: run autoFix first because the WHERE clause filters by
+    // status="APPROVED". Prisma emits WHERE status = $1::"ProviderStatus"
+    // — fails with 42883 if the DB column is TEXT. The route returns
+    // "Failed to send message" 500 — looks like the network broke but
+    // actually it's the schema/DB drift.
+    try {
+      await autoFixEnumColumns();
+    } catch (fixErr: unknown) {
+      console.error("[provider-messages POST] autoFixEnumColumns failed:", fixErr instanceof Error ? fixErr.message : fixErr);
+    }
+
+    let recipient: { id: string; name: string } | null = null;
+    try {
+      recipient = await db.provider.findFirst({
+        where: { id: toProviderId, status: "APPROVED" },
+        select: { id: true, name: true },
+      });
+    } catch (providerErr: unknown) {
+      // Fallback: raw SQL with cast-then-no-cast
+      console.error("[provider-messages POST] db.provider.findFirst failed. Falling back to raw SQL. Error:", providerErr instanceof Error ? providerErr.message : providerErr);
+      try {
+        const rows = await db.$queryRawUnsafe<Array<{ id: string; name: string }>>(
+          `SELECT "id", "name" FROM "Provider" WHERE "id" = $1 AND "status" = 'APPROVED'::"ProviderStatus" LIMIT 1`,
+          toProviderId
+        );
+        recipient = rows[0] || null;
+      } catch (castErr: unknown) {
+        const castMsg = castErr instanceof Error ? castErr.message : String(castErr);
+        if (castMsg.includes("42804") || castMsg.includes("42883") || castMsg.includes("does not exist") || castMsg.includes("is of type")) {
+          const rows = await db.$queryRawUnsafe<Array<{ id: string; name: string }>>(
+            `SELECT "id", "name" FROM "Provider" WHERE "id" = $1 AND "status" = 'APPROVED' LIMIT 1`,
+            toProviderId
+          );
+          recipient = rows[0] || null;
+        } else {
+          console.error("[provider-messages POST] Raw SQL fallback also failed:", castMsg);
+        }
+      }
+    }
     if (!recipient) {
       return NextResponse.json({ error: "Recipient not found" }, { status: 404 });
     }
