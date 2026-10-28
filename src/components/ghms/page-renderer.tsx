@@ -7,6 +7,7 @@ import { apiSubscriptionStatus } from "@/lib/api";
 import { JointLoginDialog } from "@/components/ghms/joint-login-dialog";
 import JointSessionBanner from "@/components/ghms/joint-session-banner";
 import SubscriptionBanner from "@/components/ghms/subscription-banner";
+import { OperatorHelpWidget } from "@/components/operator/help-widget";
 
 // ── Loading fallback ──
 function PageLoader() {
@@ -340,6 +341,11 @@ export default function PageRenderer() {
         open={jointLoginDialogOpen}
         onOpenChange={setJointLoginDialogOpen}
       />
+      {/* Operator help widget — only show for OPERATOR and STAFF roles.
+          Police and SUPERUSER have their own pages. */}
+      {currentUser?.role === "OPERATOR" || currentUser?.role === "STAFF" ? (
+        <OperatorHelpWidget />
+      ) : null}
     </>
   );
 }
