@@ -4,6 +4,7 @@ import { getAuthContext, getProviderFilter, AuthError } from "@/lib/tenant";
 import { ensureNewTables } from "@/lib/ensure-tables";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
+import { autoFixEnumColumns } from "@/lib/auto-fix-enum";
 export const dynamic = "force-dynamic";
 
 /**
@@ -89,11 +90,42 @@ export async function GET(req: NextRequest) {
 
     // ── Thread mode: fetch full conversation between two providers ──
     if (withProviderId) {
+      // CRITICAL: run auto-fix before the findFirst (filters by status)
+      try {
+        await autoFixEnumColumns();
+      } catch (fixErr: unknown) {
+        console.error("[provider-messages GET] autoFixEnumColumns failed (thread mode):", fixErr instanceof Error ? fixErr.message : fixErr);
+      }
+
       // Verify the other provider exists
-      const otherProvider = await db.provider.findFirst({
-        where: { id: withProviderId, status: "APPROVED" },
-        select: { id: true, name: true, ownerName: true, phone: true },
-      });
+      let otherProvider: { id: string; name: string; ownerName: string; phone: string } | null = null;
+      try {
+        otherProvider = await db.provider.findFirst({
+          where: { id: withProviderId, status: "APPROVED" },
+          select: { id: true, name: true, ownerName: true, phone: true },
+        });
+      } catch (providerErr: unknown) {
+        // Fallback: raw SQL with cast-then-no-cast
+        console.error("[provider-messages GET] db.provider.findFirst failed. Falling back to raw SQL. Error:", providerErr instanceof Error ? providerErr.message : providerErr);
+        try {
+          const rows = await db.$queryRawUnsafe<Array<{ id: string; name: string; ownerName: string; phone: string }>>(
+            `SELECT "id", "name", "ownerName", "phone" FROM "Provider" WHERE "id" = $1 AND "status" = 'APPROVED'::"ProviderStatus" LIMIT 1`,
+            withProviderId
+          );
+          otherProvider = rows[0] || null;
+        } catch (castErr: unknown) {
+          const castMsg = castErr instanceof Error ? castErr.message : String(castErr);
+          if (castMsg.includes("42804") || castMsg.includes("42883") || castMsg.includes("does not exist") || castMsg.includes("is of type")) {
+            const rows = await db.$queryRawUnsafe<Array<{ id: string; name: string; ownerName: string; phone: string }>>(
+              `SELECT "id", "name", "ownerName", "phone" FROM "Provider" WHERE "id" = $1 AND "status" = 'APPROVED' LIMIT 1`,
+              withProviderId
+            );
+            otherProvider = rows[0] || null;
+          } else {
+            console.error("[provider-messages GET] Raw SQL fallback also failed:", castMsg);
+          }
+        }
+      }
       if (!otherProvider) {
         return NextResponse.json({ error: "Provider not found" }, { status: 404 });
       }
@@ -122,11 +154,54 @@ export async function GET(req: NextRequest) {
     // Fetch all providers FIRST (this doesn't depend on the ProviderMessage
     // table existing) so the "New Chat" picker always has data — even if
     // the messages table hasn't been migrated yet.
-    const allProviders = await db.provider.findMany({
-      where: { status: "APPROVED", id: { not: myProviderId } },
-      select: { id: true, name: true, ownerName: true, phone: true },
-      orderBy: { name: "asc" },
-    });
+    //
+    // CRITICAL: run autoFixEnumColumns() BEFORE db.provider.findMany()
+    // because the WHERE clause filters by status="APPROVED". Prisma emits
+    // WHERE status = $1::"ProviderStatus" — if the DB column is TEXT,
+    // Postgres throws 42883 and the dropdown comes back empty. The auto-fix
+    // converts the TEXT column to enum (idempotent, cached per-instance).
+    try {
+      await autoFixEnumColumns();
+    } catch (fixErr: unknown) {
+      console.error("[provider-messages GET] autoFixEnumColumns failed:", fixErr instanceof Error ? fixErr.message : fixErr);
+    }
+
+    let allProviders: Array<{ id: string; name: string; ownerName: string; phone: string }> = [];
+    try {
+      allProviders = await db.provider.findMany({
+        where: { status: "APPROVED", id: { not: myProviderId } },
+        select: { id: true, name: true, ownerName: true, phone: true },
+        orderBy: { name: "asc" },
+      });
+    } catch (providerErr: unknown) {
+      // Fallback: if Prisma's findMany STILL fails after the auto-fix
+      // (e.g., enum type cache not invalidated), use raw SQL with
+      // literal+cast. 2-way fallback: try with cast (works for enum
+      // column), fall back to no-cast (works for TEXT column).
+      console.error("[provider-messages GET] db.provider.findMany failed. Falling back to raw SQL. Error:", providerErr instanceof Error ? providerErr.message : providerErr);
+      try {
+        // Try with cast (enum column)
+        const rows = await db.$queryRawUnsafe<Array<{ id: string; name: string; ownerName: string; phone: string }>>(
+          `SELECT "id", "name", "ownerName", "phone" FROM "Provider" WHERE "status" = 'APPROVED'::"ProviderStatus" AND "id" != $1 ORDER BY "name" ASC`,
+          myProviderId
+        );
+        allProviders = rows;
+      } catch (castErr: unknown) {
+        // Fall back to no-cast (TEXT column)
+        const castMsg = castErr instanceof Error ? castErr.message : String(castErr);
+        if (castMsg.includes("42804") || castMsg.includes("42883") || castMsg.includes("does not exist") || castMsg.includes("is of type")) {
+          const rows = await db.$queryRawUnsafe<Array<{ id: string; name: string; ownerName: string; phone: string }>>(
+            `SELECT "id", "name", "ownerName", "phone" FROM "Provider" WHERE "status" = 'APPROVED' AND "id" != $1 ORDER BY "name" ASC`,
+            myProviderId
+          );
+          allProviders = rows;
+        } else {
+          // Different error — return empty list (the dropdown will show
+          // "no providers available" but at least the page loads)
+          console.error("[provider-messages GET] Raw SQL fallback also failed:", castMsg);
+        }
+      }
+    }
 
     // Fetch all messages where the current provider is sender or recipient.
     // Wrap in try/catch — if the ProviderMessage table doesn't exist yet,
