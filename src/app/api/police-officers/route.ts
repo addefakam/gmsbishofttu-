@@ -10,6 +10,7 @@ import {
 import { logAudit } from "@/lib/audit";
 import { hashPassword } from "@/lib/auth-utils";
 
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 // Hierarchy levels — higher number = more authority
 const RANK_HIERARCHY: Record<PoliceRank, number> = {
   VIEWER: 0,
@@ -25,6 +26,7 @@ const RANK_HIERARCHY: Record<PoliceRank, number> = {
  * - SUPERUSER: see all police accounts
  */
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
   try {
     const auth = await getAuthContext(req);
 
@@ -71,6 +73,7 @@ export async function GET(req: NextRequest) {
  * - POLICE VIEWER: cannot create
  */
 export async function POST(req: NextRequest) {
+    await ensureNotNullableDefaults();
   try {
     const auth = await getAuthContext(req);
 
@@ -192,6 +195,7 @@ export async function POST(req: NextRequest) {
  * - POLICE OFFICER: can update VIEWER only
  */
 export async function PUT(req: NextRequest) {
+    await ensureNotNullableDefaults();
   try {
     const auth = await getAuthContext(req);
 
@@ -316,6 +320,7 @@ export async function PUT(req: NextRequest) {
  * - POLICE OFFICER: can delete VIEWER only
  */
 export async function DELETE(req: NextRequest) {
+    await ensureNotNullableDefaults();
   try {
     const auth = await getAuthContext(req);
 

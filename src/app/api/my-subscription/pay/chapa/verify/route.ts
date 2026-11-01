@@ -5,6 +5,7 @@ import { ensureInlineMigrations } from "@/lib/inline-migrate";
 import { verifyPayment } from "@/lib/chapa";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 /**
  * POST /api/my-subscription/pay/chapa/verify
  *
@@ -14,6 +15,7 @@ import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
  * Body: { subPrefix?: string }  (subscription ID prefix from URL param)
  */
 export async function POST(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureProviderStatusEnum();
   try {
     await ensureInlineMigrations();

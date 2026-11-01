@@ -3,6 +3,7 @@ import { logAudit } from "@/lib/audit";
 import { hashPassword, verifyPassword, createToken, type JWTPayload } from "@/lib/auth-utils";
 import { ensureNewTables } from "@/lib/ensure-tables";
 import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 
 // Detect if SSL is needed based on DATABASE_URL
 function needsSsl(): boolean {
@@ -266,6 +267,17 @@ export async function POST(req: NextRequest) {
         await ensureSettingsColumns();
       } catch (settingsErr) {
         console.warn("[auth] ensureSettingsColumns failed (non-blocking):", settingsErr instanceof Error ? settingsErr.message : settingsErr);
+      }
+
+      // Backfill NULL values with schema defaults for non-nullable columns.
+      // Existing rows may have NULL due to ALTER TABLE ADD COLUMN behavior
+      // (NULL is stored for existing rows even when DEFAULT is set). Prisma
+      // throws 'expected non-nullable type "String", found null' when this
+      // happens. This UPDATEs all NULL values to their schema defaults.
+      try {
+        await ensureNotNullableDefaults();
+      } catch (nullErr) {
+        console.warn("[auth] ensureNotNullableDefaults failed (non-blocking):", nullErr instanceof Error ? nullErr.message : nullErr);
       }
 
       // Query the user

@@ -4,6 +4,7 @@ import { ensureDatabase } from "@/lib/init-db";
 import { getAuthContext, AuthError } from "@/lib/tenant";
 import { logStaffActivity, getLogUserInfo } from "@/lib/staff-log";
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 import {
   buildCertificatePdf,
   buildCertNumber,
@@ -28,6 +29,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+    await ensureNotNullableDefaults();
     await ensureProviderStatusEnum();
   try {
     await ensureDatabase();

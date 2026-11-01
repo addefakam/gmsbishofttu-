@@ -4,7 +4,9 @@ import { getAuthContext, getProviderFilter, checkWritePermission, AuthError } fr
 import { hashPassword } from "@/lib/auth-utils";
 import { logStaffActivity } from "@/lib/staff-log";
 
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
   try {
     const auth = await getAuthContext(req);
     // SUPERUSER without providerId (system admin) cannot access the users list
@@ -66,6 +68,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureNotNullableDefaults();
   try {
     const auth = await getAuthContext(req);
     const { providerId } = getProviderFilter(auth);

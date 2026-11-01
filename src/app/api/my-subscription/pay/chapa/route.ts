@@ -12,6 +12,7 @@ import { calcNextEndDate, CYCLE_DAYS } from "@/lib/subscription";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 /**
  * POST /api/my-subscription/pay/chapa
  *
@@ -20,6 +21,7 @@ import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
  * Returns: { checkoutUrl, txRef }
  */
 export async function POST(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureSettingsColumns();
     await ensureProviderStatusEnum();
   try {

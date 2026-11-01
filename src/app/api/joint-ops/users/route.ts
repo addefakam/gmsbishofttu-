@@ -3,12 +3,14 @@ import { db } from "@/lib/db";
 import { verifyToken } from "@/lib/auth-utils";
 import { getAuthContext, AuthError } from "@/lib/tenant";
 
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 /**
  * GET /api/joint-ops/users
  *
  * Returns all user accounts in the system. Requires active joint session.
  */
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
   try {
     // ── Deploy-blocker fix: require authenticated session first ──
     const auth = await getAuthContext(req);

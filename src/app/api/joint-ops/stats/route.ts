@@ -5,6 +5,7 @@ import { verifyToken } from "@/lib/auth-utils";
 import { getAuthContext, AuthError } from "@/lib/tenant";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 /**
  * GET /api/joint-ops/stats
  *
@@ -12,6 +13,7 @@ import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
  * (both ghms_token + ghms_token_joint cookies with valid SUPERUSER + POLICE ADMIN).
  */
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureProviderStatusEnum();
   try {
     // ── Deploy-blocker fix: require authenticated session first ──

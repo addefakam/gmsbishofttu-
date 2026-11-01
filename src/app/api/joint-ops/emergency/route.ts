@@ -5,6 +5,7 @@ import { verifyToken } from "@/lib/auth-utils";
 import { getAuthContext, AuthError } from "@/lib/tenant";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 /**
  * POST /api/joint-ops/emergency
  *
@@ -13,6 +14,7 @@ import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
  * - unsuspend-all: Unsuspend all SUSPENDED guesthouses
  */
 export async function POST(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureProviderStatusEnum();
   try {
     // ── Deploy-blocker fix: require authenticated session first ──

@@ -5,6 +5,7 @@ import { ensureNewTables } from "@/lib/ensure-tables";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { autoFixEnumColumns } from "@/lib/auto-fix-enum";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 export const dynamic = "force-dynamic";
 
 /**
@@ -46,6 +47,7 @@ async function ensureProviderMessageTable(): Promise<void> {
  *   provider and the specified provider. Also marks received messages as read.
  */
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureProviderStatusEnum();
   try {
     const { searchParams } = new URL(req.url);
@@ -285,6 +287,7 @@ export async function GET(req: NextRequest) {
  * Sends a message from the current provider to the specified provider.
  */
 export async function POST(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureProviderStatusEnum();
   try {
     await ensureProviderMessageTable();

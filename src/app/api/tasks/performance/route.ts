@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { ensureDatabase } from "@/lib/init-db";
 import { getAuthContext, getProviderFilter, AuthError } from "@/lib/tenant";
 
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 /**
  * /api/tasks/performance
  *
@@ -17,6 +18,7 @@ import { getAuthContext, getProviderFilter, AuthError } from "@/lib/tenant";
  */
 
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
   try {
     await ensureDatabase();
     const auth = await getAuthContext(req);

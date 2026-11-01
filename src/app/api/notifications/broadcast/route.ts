@@ -4,12 +4,14 @@ import { getAuthContext, AuthError } from "@/lib/tenant";
 import { ensureNewTables } from "@/lib/ensure-tables";
 import { requirePoliceMinRank, RANK_LABELS } from "@/lib/police-permissions";
 
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 /**
  * Broadcast notification API — Police (OFFICER+) and SUPERUSER can send.
  * Dispatches notifications to all or selected guest service providers
  * via SMS, WhatsApp, Telegram, or In-App notification.
  */
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
   try {
     await ensureNewTables();
     const auth = await getAuthContext(req);
@@ -49,6 +51,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureNotNullableDefaults();
   try {
     await ensureNewTables();
     const auth = await getAuthContext(req);

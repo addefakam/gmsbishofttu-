@@ -6,6 +6,7 @@ import { isValidPhone, isValidEmail } from "@/lib/utils";
 import { logStaffActivity } from "@/lib/staff-log";
 
 import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 const DEFAULT_SETTINGS = {
   guestHouseName: "Guest House",
   ownerName: "",
@@ -21,6 +22,7 @@ const DEFAULT_SETTINGS = {
 };
 
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureSettingsColumns();
   try {
     const auth = await getAuthContext(req);
@@ -69,6 +71,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureSettingsColumns();
   try {
     const auth = await getAuthContext(req);

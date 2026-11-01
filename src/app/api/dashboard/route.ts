@@ -7,9 +7,11 @@ import { todayStr } from "@/lib/reservation-maintenance";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureSettingsColumns();
     await ensureProviderStatusEnum();
   try {

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getAuthContext, AuthError } from "@/lib/tenant";
 
 import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 const DEFAULT_PAYMENT = {
   trialDays: 15,
   warningDays: 7,
@@ -26,6 +27,7 @@ const DEFAULT_PAYMENT = {
  * Deploy-blocker fix: requires authenticated session.
  */
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureSettingsColumns();
   try {
     // ── Deploy-blocker fix: require auth — this leaks payment config ──

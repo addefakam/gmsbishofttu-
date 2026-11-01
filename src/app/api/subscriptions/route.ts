@@ -5,6 +5,7 @@ import { calcSubscriptionStatus, TRIAL_DAYS, WARNING_DAYS, GRACE_DAYS, type Subs
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 async function getPaymentConfig() {
   try {
     const sysSettings = await db.settings.findFirst({
@@ -28,6 +29,7 @@ async function getPaymentConfig() {
 }
 
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureSettingsColumns();
     await ensureProviderStatusEnum();
   try {

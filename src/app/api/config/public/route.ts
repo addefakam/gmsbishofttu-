@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
 import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 /**
  * GET /api/config/public
  *
@@ -18,6 +19,7 @@ import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
  * supportPhone so the client falls back to "no support line shown".
  */
 export async function GET() {
+    await ensureNotNullableDefaults();
     await ensureSettingsColumns();
   try {
     const sysSettings = await db.settings.findFirst({

@@ -5,7 +5,9 @@ import { getAuthContext, requirePolice, AuthError } from "@/lib/tenant";
 import { logAudit } from "@/lib/audit";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);

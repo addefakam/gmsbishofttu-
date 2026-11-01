@@ -5,12 +5,14 @@ import { calcNextEndDate, CYCLE_DAYS, TRIAL_DAYS, calcSubscriptionStatus } from 
 import { logAudit } from "@/lib/audit";
 
 import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 const VALID_CYCLES = ["MONTHLY", "QUARTERLY", "SEMI_ANNUAL", "YEARLY"] as const;
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureNotNullableDefaults();
     await ensureSettingsColumns();
   try {
     const auth = await getAuthContext(req);

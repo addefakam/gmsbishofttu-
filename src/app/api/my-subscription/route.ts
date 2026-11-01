@@ -4,6 +4,7 @@ import { getAuthContext, AuthError } from "@/lib/tenant";
 import { ensureInlineMigrations } from "@/lib/inline-migrate";
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 import {
   calcSubscriptionStatus,
   calcNextEndDate,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/subscription";
 
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureSettingsColumns();
     await ensureProviderStatusEnum();
   try {
@@ -210,6 +212,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureSettingsColumns();
     await ensureProviderStatusEnum();
   try {

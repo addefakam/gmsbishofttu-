@@ -6,11 +6,13 @@ import { runReservationMaintenance } from "@/lib/reservation-maintenance";
 import { ensureNewTables } from "@/lib/ensure-tables";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 // ── Force dynamic rendering ──
 // Prevents Vercel from caching stale room availability data at the edge.
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureProviderStatusEnum();
   try {
     await ensureNewTables();

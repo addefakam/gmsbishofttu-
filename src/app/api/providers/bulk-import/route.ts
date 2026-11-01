@@ -6,7 +6,9 @@ import { hashPassword } from "@/lib/auth-utils";
 import { isValidPhone, isValidEmail } from "@/lib/utils";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 export async function POST(req: NextRequest) {
+    await ensureNotNullableDefaults();
     await ensureProviderStatusEnum();
   try {
     await ensureDatabase();

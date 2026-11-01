@@ -7,6 +7,7 @@ import { uploadFile } from "@/lib/storage";
 import { isValidPhone, isValidEmail } from "@/lib/utils";
 import { ensureNewTables } from "@/lib/ensure-tables";
 
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 // ── Force dynamic rendering ──
 // Prevents Vercel from caching stale provider data at the edge.
 export const dynamic = "force-dynamic";
@@ -113,6 +114,7 @@ async function ensureProviderColumns(): Promise<void> {
 }
 
 export async function GET(req: NextRequest) {
+    await ensureNotNullableDefaults();
   try {
     await ensureDatabase();
 
@@ -176,6 +178,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureNotNullableDefaults();
   try {
     // Ensure ALL Provider columns exist BEFORE any Prisma query.
     // This runs ALTER TABLE for each missing column via pg.Client with SSL.
