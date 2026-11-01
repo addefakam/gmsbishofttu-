@@ -46,12 +46,12 @@ export function EmergencyCallButton() {
     <div
       style={{
         position: "fixed",
-        right: 16,
+        left: 16,
         bottom: 16,
         zIndex: 9999,
         display: "flex",
         flexDirection: "column",
-        alignItems: "flex-end",
+        alignItems: "flex-start",
         gap: 8,
       }}
     >
