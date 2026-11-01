@@ -23,33 +23,11 @@ export function EmergencyCallButton() {
   const [open, setOpen] = useState(false);
   const [visible, setVisible] = useState(false);
 
-  // Only show on authenticated pages. We detect this by checking if
-  // the URL path starts with /dashboard, /police-dashboard, /m (mobile),
-  // /owner, or /police-app — i.e. NOT the root login page or /m login.
+  // Show on every page — emergency services should always be one tap
+  // away, including on login pages, registration pages, and authenticated
+  // dashboards. No path-based hiding.
   useEffect(() => {
-    const check = () => {
-      const path = window.location.pathname;
-      // Hide on root login page
-      if (path === "/" ) {
-        setVisible(false);
-        return;
-      }
-      // Hide on /police-app login page (when not authenticated — detected
-      // by absence of the app shell). The police app renders its own
-      // login UI; we don't want the emergency button there.
-      // But we DO want it on the police dashboard.
-      // Simple heuristic: show on all paths except root.
-      setVisible(true);
-    };
-    check();
-    window.addEventListener("popstate", check);
-    // Also re-check on a slight delay in case client-side routing hasn't
-    // updated the path yet.
-    const t = setTimeout(check, 500);
-    return () => {
-      window.removeEventListener("popstate", check);
-      clearTimeout(t);
-    };
+    setVisible(true);
   }, []);
 
   // Close menu when clicking outside (or pressing Escape)
