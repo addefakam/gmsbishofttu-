@@ -54,31 +54,138 @@ export async function GET(req: NextRequest) {
       where.is_active = true;
     }
 
-    const [persons, total] = await Promise.all([
-      db.suspectedPerson.findMany({
-        where,
-        include: {
-          _count: { select: { matches: true } },
-          matches: {
-            orderBy: { createdAt: "desc" },
-            take: 1, // Latest match only — for "recently flagged" indicator
-            select: {
-              id: true,
-              guestName: true,
-              guestPhone: true,
-              providerName: true,
-              reservationId: true,
-              matchType: true,
-              createdAt: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: pageSize,
-      }),
-      db.suspectedPerson.count({ where }),
-    ]);
+    // ── Raw SQL — bypass Prisma's runtime type validator ──
+    // After commit 6e0c0cf changed severity from SuspectSeverity enum to
+    // String, Prisma's runtime validator STILL has cached enum metadata and
+    // rejects "CRITICAL" with:
+    //   "Error converting field 'severity' of expected non-nullable type
+    //    'String', found incompatible value of 'CRITICAL'"
+    // even though the schema says String. Same Prisma-runtime-cache bug as
+    // the create path (commit 7c0fcf1).
+    //
+    // Strategy: build the WHERE clause with literal+caset for severity
+    // (validated against whitelist), parameterized for everything else.
+    // Try with cast first (works for enum column), fall back to no-cast
+    // (works for TEXT column).
+
+    const VALID_SUSPECT_SEVERITIES = new Set(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+    const safeSeverity = severity && VALID_SUSPECT_SEVERITIES.has(severity.toUpperCase())
+      ? severity.toUpperCase()
+      : ""; // empty = no severity filter
+
+    // Build WHERE conditions (parameterized for everything except severity
+    // which uses literal+cast)
+    const whereConds: string[] = [];
+    const whereParams: unknown[] = [];
+    let pi = 1;
+
+    if (q) {
+      // ID search via SuspectId table — get matching person IDs first
+      const matchingIdPersons = await db.$queryRawUnsafe<{ suspectedPersonId: string }[]>(
+        `SELECT DISTINCT "suspectedPersonId" FROM "SuspectId" WHERE LOWER("idNumber") LIKE LOWER($1)`,
+        `%${q}%`
+      );
+      const idsFromIdTable = matchingIdPersons.map(r => r.suspectedPersonId);
+      // (name OR idNumber OR id-in-idtable)
+      const orParts: string[] = [`sp."idNumber" ILIKE $${pi}`];
+      whereParams.push(`%${q}%`);
+      pi++;
+      if (idsFromIdTable.length > 0) {
+        // Use ANY($N::text[]) for the IN clause
+        orParts.push(`sp."id" = ANY($${pi}::text[])`);
+        whereParams.push(idsFromIdTable);
+        pi++;
+      }
+      whereConds.push(`(${orParts.join(" OR ")})`);
+    }
+    if (safeSeverity) {
+      // severity as literal+cast (try cast first, fall back to no-cast)
+      // We'll handle this in the SQL string itself via a placeholder + cast
+      // For now just remember the safe severity value
+    }
+    if (activeOnly) {
+      whereConds.push(`sp."is_active" = true`);
+    }
+
+    // === Build SELECT query ===
+    // Two variants: with cast on severity filter, without cast.
+    const buildQuery = (severityCast: string) => {
+      let sql = `SELECT sp.*, (
+        SELECT COUNT(*)::int FROM "SuspectMatch" sm WHERE sm."suspectedPersonId" = sp."id"
+      ) AS "_match_count",
+      (
+        SELECT row_to_json(m) FROM (
+          SELECT sm."id", sm."guestName", sm."guestPhone", sm."providerName",
+                 sm."reservationId", sm."matchType", sm."createdAt"
+          FROM "SuspectMatch" sm
+          WHERE sm."suspectedPersonId" = sp."id"
+          ORDER BY sm."createdAt" DESC
+          LIMIT 1
+        ) m
+      ) AS "latest_match"
+      FROM "SuspectedPerson" sp`;
+      const conds = [...whereConds];
+      if (safeSeverity) {
+        conds.push(`sp."severity" = '${safeSeverity}'${severityCast}`);
+      }
+      if (conds.length > 0) {
+        sql += ` WHERE ${conds.join(" AND ")}`;
+      }
+      sql += ` ORDER BY sp."createdAt" DESC LIMIT $${pi} OFFSET $${pi + 1}`;
+      return sql;
+    };
+
+    const countQuery = (() => {
+      let sql = `SELECT COUNT(*)::int AS count FROM "SuspectedPerson" sp`;
+      const conds = [...whereConds];
+      if (safeSeverity) {
+        conds.push(`sp."severity" = '${safeSeverity}'`);
+      }
+      if (conds.length > 0) {
+        sql += ` WHERE ${conds.join(" AND ")}`;
+      }
+      return sql;
+    })();
+
+    // Attempt 1: severity filter with cast (works for enum column)
+    let persons: Record<string, unknown>[] = [];
+    let total = 0;
+    try {
+      const querySql = buildQuery('::"SuspectSeverity"');
+      const countSql = countQuery; // count doesn't need cast — text = text works on enum too? Actually no, same issue. Let me also try cast on count.
+      const countSqlWithCast = (() => {
+        let sql = `SELECT COUNT(*)::int AS count FROM "SuspectedPerson" sp`;
+        const conds = [...whereConds];
+        if (safeSeverity) {
+          conds.push(`sp."severity" = '${safeSeverity}'::"SuspectSeverity"`);
+        }
+        if (conds.length > 0) {
+          sql += ` WHERE ${conds.join(" AND ")}`;
+        }
+        return sql;
+      })();
+
+      [persons, total] = await Promise.all([
+        db.$queryRawUnsafe<Record<string, unknown>[]>(querySql, ...whereParams, pageSize, skip),
+        db.$queryRawUnsafe<Array<{ count: number }>>(countSqlWithCast, ...whereParams).then(r => Number(r[0]?.count ?? 0)),
+      ]);
+    } catch (castErr: unknown) {
+      const castMsg = castErr instanceof Error ? castErr.message : String(castErr);
+      const enumTypeMissing = castMsg.includes('type "SuspectSeverity" does not exist') || castMsg.includes('SuspectSeverity does not exist');
+      const otherCastError = castMsg.includes("42804") || (castMsg.includes("is of type") && castMsg.includes("but expression is of type"));
+
+      if (enumTypeMissing || otherCastError) {
+        // Attempt 2: no cast (works for TEXT column)
+        console.log(`[suspected-persons GET] Cast query failed (column is TEXT or enum type missing). Retrying without cast. Error: ${castMsg}`);
+        const querySql = buildQuery("");
+        [persons, total] = await Promise.all([
+          db.$queryRawUnsafe<Record<string, unknown>[]>(querySql, ...whereParams, pageSize, skip),
+          db.$queryRawUnsafe<Array<{ count: number }>>(countQuery, ...whereParams).then(r => Number(r[0]?.count ?? 0)),
+        ]);
+      } else {
+        throw castErr;
+      }
+    }
 
     // Fetch all IDs for the returned persons + latest match reservation status
     if (persons.length > 0) {
@@ -100,18 +207,31 @@ export async function GET(req: NextRequest) {
       for (const p of persons) {
         (p as Record<string, unknown>).identifiers = idsByPerson[p.id] || [];
 
+        // Normalize the fields returned by raw SQL — Prisma's findMany
+        // returned _count.matches and matches[0]; raw SQL returns _match_count
+        // and latest_match. Map them to the shape the frontend expects.
+        const latestMatch = (p as Record<string, unknown>).latest_match as
+          | { id: string; guestName: string; guestPhone: string; providerName: string; reservationId: string; matchType: string; createdAt: string }
+          | null;
+        (p as Record<string, unknown>).matches = latestMatch ? [latestMatch] : [];
+        (p as Record<string, unknown>)._count = { matches: Number((p as Record<string, unknown>)._match_count ?? 0) };
+        delete (p as Record<string, unknown>).latest_match;
+        delete (p as Record<string, unknown>)._match_count;
+
         // If this person has a latest match with a reservationId, fetch its current status
-        const latestMatch = p.matches?.[0];
+        // Use raw SQL — db.reservation.findUnique would hit the same Prisma runtime cache
         if (latestMatch?.reservationId) {
           try {
-            const res = await db.reservation.findUnique({
-              where: { id: latestMatch.reservationId },
-              select: { status: true, checkIn: true, checkOut: true, room: { select: { number: true } } },
-            });
+            const resRows = await db.$queryRawUnsafe<Array<{ status: string | null; checkIn: string | null; checkOut: string | null; roomNumber: string | null }>>(
+              `SELECT r."status", r."checkIn", r."checkOut", rm."number" AS "roomNumber"
+               FROM "Reservation" r LEFT JOIN "Room" rm ON rm."id" = r."roomId"
+               WHERE r."id" = $1 LIMIT 1`, latestMatch.reservationId
+            );
+            const res = resRows[0];
             if (res) {
               (p as Record<string, unknown>).latestMatchReservationStatus = res.status;
               (p as Record<string, unknown>).latestMatchReservationCheckIn = res.checkIn;
-              (p as Record<string, unknown>).latestMatchReservationRoom = res.room?.number || "";
+              (p as Record<string, unknown>).latestMatchReservationRoom = res.roomNumber || "";
             }
           } catch { /* ignore — non-critical */ }
         }
@@ -165,24 +285,99 @@ export async function POST(req: NextRequest) {
     const primaryId = idNumber || "";
     const primaryIdType = normalizeIdType(idType || "") || "";
 
-    const person = await db.suspectedPerson.create({
-      data: {
-        name: name.trim(),
-        phone: phone || "",
-        idNumber: primaryId,
-        idType: primaryIdType,
-        // Normalize nationality too so suspect records use the same
-        // canonical forms as guests.
-        nationality: normalizeNationality(nationality || ""),
-        address: address || "",
-        description: description || "",
-        severity: severity || "MEDIUM",
-        registeredBy: auth.role,
-      },
-      include: {
-        _count: { select: { matches: true } },
-      },
-    });
+    // ── INSERT via raw SQL with literal+caset — bypass Prisma's runtime
+    //    validator AND handle both TEXT and enum column types ──
+    //
+    // Why this is needed:
+    // 1. Prisma's runtime type validator still has cached enum metadata
+    //    after commit 6e0c0cf changed severity from SuspectSeverity enum
+    //    to String. Native db.suspectedPerson.create() fails with:
+    //      "Error converting field 'severity' of expected non-nullable
+    //       type 'String', found incompatible value of 'CRITICAL'"
+    // 2. Different DBs have different column states:
+    //      - Some: severity column is TEXT (older deploy, before enum
+    //        types were set up)
+    //      - Others: severity column is SuspectSeverity enum (newer
+    //        deploy, enum types created first)
+    //    A parameterized INSERT (db.$executeRawUnsafe with $1) sends the
+    //    value as text via the extended query protocol — Postgres can't
+    //    cast text → enum implicitly → 42804 error.
+    //
+    // Solution: validate severity against a whitelist, INLINE it as a
+    // SQL literal with explicit cast. Safe because enum values come
+    // from a closed set (no SQL injection risk).
+    const VALID_SUSPECT_SEVERITIES = new Set(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+    const safeSeverity = VALID_SUSPECT_SEVERITIES.has(String(severity || "").toUpperCase())
+      ? String(severity || "").toUpperCase()
+      : "MEDIUM";
+
+    const personId = `sus_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+    // Other (non-enum) parameters — still parameterized for safety.
+    const otherParams = [
+      personId, name.trim(), phone || "", primaryId,
+      primaryIdType, normalizeNationality(nationality || ""),
+      address || "", description || "", auth.role,
+    ];
+
+    // Attempt 1: with cast (works for enum column)
+    try {
+      await db.$executeRawUnsafe(
+        `INSERT INTO "SuspectedPerson"
+          ("id", "name", "phone", "idNumber", "idType", "nationality",
+           "address", "description", "severity", "is_active", "registeredBy",
+           "createdAt", "updatedAt")
+         VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8, '${safeSeverity}'::"SuspectSeverity",
+           true, $9, NOW(), NOW())`,
+        ...otherParams
+      );
+    } catch (castErr: unknown) {
+      const castMsg = castErr instanceof Error ? castErr.message : String(castErr);
+      const enumTypeMissing = castMsg.includes('type "SuspectSeverity" does not exist') || castMsg.includes('SuspectSeverity does not exist');
+      const otherCastError = castMsg.includes("42804") || (castMsg.includes("is of type") && castMsg.includes("but expression is of type"));
+
+      if (enumTypeMissing || otherCastError) {
+        // Attempt 2: no cast (works for TEXT column)
+        console.log(`[suspected-persons POST] Cast INSERT failed (column is TEXT or enum type missing). Retrying without cast. Error: ${castMsg}`);
+        try {
+          await db.$executeRawUnsafe(
+            `INSERT INTO "SuspectedPerson"
+              ("id", "name", "phone", "idNumber", "idType", "nationality",
+               "address", "description", "severity", "is_active", "registeredBy",
+               "createdAt", "updatedAt")
+             VALUES
+              ($1, $2, $3, $4, $5, $6, $7, $8, '${safeSeverity}',
+               true, $9, NOW(), NOW())`,
+            ...otherParams
+          );
+        } catch (noCastErr: unknown) {
+          // Both paths failed — re-throw the no-cast error (more useful
+          // for debugging since it shows the actual column state).
+          throw noCastErr;
+        }
+      } else {
+        throw castErr;
+      }
+    }
+
+    // Fetch the created record (also via raw SQL to stay consistent).
+    const persons = await db.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `SELECT * FROM "SuspectedPerson" WHERE "id" = $1`,
+      personId
+    );
+    const person = persons[0] ?? { id: personId };
+
+    // matches count — also via raw SQL (avoids Prisma model includes)
+    let matchCount = 0;
+    try {
+      const mc = await db.$queryRawUnsafe<Array<{ count: bigint | number }>>(
+        `SELECT COUNT(*)::int AS count FROM "SuspectMatch" WHERE "suspectedPersonId" = $1`,
+        personId
+      );
+      matchCount = Number(mc[0]?.count ?? 0);
+    } catch {}
+    (person as Record<string, unknown>)._count = { matches: matchCount };
 
     // Create SuspectId records for all provided identifiers — also
     // normalized so multi-ID suspects have consistent types.

@@ -134,7 +134,7 @@ model Provider {
   // on top of the API-level check in /api/providers POST.
   licenseNo   String          @unique
   licenseFile String          @default("")
-  status      ProviderStatus  @default(PENDING)
+  status        ProviderStatus @default(PENDING)
   latitude    Float           @default(9.02)
   longitude   Float           @default(38.75)
   approvedBy  String?
@@ -194,10 +194,10 @@ model User {
   id          String          @id @default(cuid())
   username    String          @unique
   password    String
-  role        UserRole        @default(STAFF)
+  role          UserRole @default(STAFF)
   name        String
-  email       String?         @default("")
-  phone       String?         @default("")
+  email       String          @default("")  // DB column is TEXT NOT NULL DEFAULT '' (auth/route.ts L85) — was String? which let routes send NULL and trip P2002
+  phone       String          @default("")  // same — DB column is TEXT NOT NULL DEFAULT ''
   permissions String          @default("[\"reservations\",\"guests\"]")  // JSON array of allowed pages for STAFF
   policeRank  String          @default("")  // ADMIN, DETECTIVE, OFFICER, VIEWER for POLICE role
   isActive    Boolean         @default(true)
@@ -209,8 +209,8 @@ model User {
   // SUBCITY = filtered to one sub-city
   // WOREDA = filtered to one woreda
   jurisdictionType String  @default("CITY")
-  subCity     String?         // e.g. "Debaayyuu" — set when jurisdictionType = SUBCITY or WOREDA
-  woreda      String?         // e.g. "Dirree" — set only when jurisdictionType = WOREDA
+  subCity     String          @default("")  // DB column is TEXT NOT NULL DEFAULT '' — schema must match (was String? which let routes send NULL and trip P2002)
+  woreda      String          @default("")  // same — DB column is TEXT NOT NULL DEFAULT ''
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
@@ -234,7 +234,7 @@ model Room {
   id            String     @id @default(cuid())
   number        String
   name          String
-  type          RoomType
+  type          RoomType @default(STANDARD)
   pricePerNight Float
   // Optional weekend rate — if set, applies to Friday + Saturday nights
   // (Ethiopian weekend). If null or 0, falls back to pricePerNight for
@@ -312,9 +312,9 @@ model Reservation {
   totalCost       Float
   paidAmount      Float             @default(0)
   balance         Float             @default(0)
-  paymentStatus   PaymentStatusType @default(PENDING)
+  paymentStatus PaymentStatusType @default(PENDING)
   paymentMethod   PaymentMethodType?
-  status          ReservationStatus @default(UPCOMING)
+  status        ReservationStatus @default(UPCOMING)
   notes           String            @default("")
   actualCheckIn   DateTime?
   actualCheckOut  DateTime?
@@ -378,8 +378,8 @@ model DaytimeBooking {
   unitPrice      Float
   totalCost      Float
   paidAmount     Float             @default(0)
-  paymentStatus  PaymentStatusType @default(PENDING)
-  paymentMethod  PaymentMethodType?
+  paymentStatus PaymentStatusType @default(PENDING)
+  paymentMethod   PaymentMethodType?
   notes          String            @default("")
   providerId     String
   createdAt      DateTime          @default(now())
@@ -412,10 +412,10 @@ model DaytimeRoomBooking {
   roomRate       Float             // hourly rate (ETB/hour)
   totalCost      Float             // totalHours * roomRate
   paidAmount     Float             @default(0)
-  paymentStatus  PaymentStatusType @default(PENDING)
-  paymentMethod  PaymentMethodType?
+  paymentStatus PaymentStatusType @default(PENDING)
+  paymentMethod   PaymentMethodType?
   notes          String            @default("")
-  status         ReservationStatus @default(UPCOMING)
+  status        ReservationStatus @default(UPCOMING)
   providerId     String
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -439,7 +439,7 @@ model Expense {
   description   String
   amount        Float
   vendor        String            @default("")
-  paymentMethod PaymentMethodType
+  paymentMethod PaymentMethodType @default(CASH)
   receiptNo     String            @default("")
   taxAmount     Float             @default(0)
   providerId    String
@@ -515,7 +515,7 @@ model Payment {
   daytimeBookingId String?
   daytimeRoomBookingId String?
   amount           Float
-  method           PaymentMethodType
+  method        PaymentMethodType @default(CASH)
   referenceNo      String            @default("")
   notes            String            @default("")
   providerId       String
@@ -536,7 +536,7 @@ model Notification {
   id        String           @id @default(cuid())
   title     String
   message   String
-  type      NotificationType @default(INFO)
+  type          NotificationType @default(INFO)
   isRead    Boolean          @default(false)
   link      String?
   providerId String?
@@ -554,7 +554,7 @@ model Notification {
 model HousekeepingTask {
   id            String                 @id @default(cuid())
   roomId        String
-  type          HousekeepingTaskType
+  type          HousekeepingTaskType @default(CLEANING)
   status        HousekeepingTaskStatus @default(PENDING)
   assignedTo    String?
   scheduledDate String
@@ -736,7 +736,7 @@ model GroupBooking {
   startDate    String
   endDate      String
   notes        String             @default("")
-  status       GroupBookingStatus @default(PENDING)
+  status        GroupBookingStatus @default(PENDING)
   totalRooms   Int                @default(0)
   totalGuests  Int                @default(0)
   totalCost    Float              @default(0)
@@ -888,7 +888,7 @@ model SuspectedPerson {
   nationality   String           @default("")
   address       String           @default("")
   description   String           @default("")
-  severity      SuspectSeverity  @default(MEDIUM)
+  severity      SuspectSeverity @default(MEDIUM)
   is_active     Boolean          @default(true)
   registeredBy  String           @default("")
   createdAt     DateTime         @default(now())

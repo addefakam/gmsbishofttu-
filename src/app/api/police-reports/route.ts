@@ -7,8 +7,23 @@ import { logAudit } from "@/lib/audit";
 import { resetInitFlag, ensureDatabase } from "@/lib/init-db";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
+import { autoFixEnumColumns } from "@/lib/auto-fix-enum";
 export async function GET(req: NextRequest) {
     await ensureProviderStatusEnum();
+    // ── CRITICAL: auto-fix enum/TEXT column mismatch BEFORE any Prisma call ──
+    // The DB column for Provider.status (and other enum-typed fields) might
+    // still be TEXT. Native db.provider.count({ where: { status: ... } })
+    // would fail with 42883 'operator does not exist: text = ProviderStatus'.
+    // autoFixEnumColumns() creates the enum types AND converts TEXT columns
+    // to enum — idempotent, cached per-instance. After this runs once,
+    // native Prisma calls throughout this route work.
+    try {
+      await autoFixEnumColumns();
+    } catch (fixErr: unknown) {
+      console.error("[police-reports GET] autoFixEnumColumns failed:", fixErr instanceof Error ? fixErr.message : fixErr);
+      // Continue — if the fix fails, native Prisma calls might still work
+      // (if the columns happen to be enum already).
+    }
   try {
     resetInitFlag();
     await ensureDatabase();

@@ -1,3 +1,4 @@
+import { countProviders } from "@/lib/raw-queries";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAuthContext, requirePolice, AuthError } from "@/lib/tenant";
@@ -107,7 +108,7 @@ export async function GET(req: NextRequest) {
     const geofences = await db.geofence.findMany({ where: { isActive: true } });
 
     // 7. System-wide stats
-    const totalProviders = await db.provider.count({ where: { status: "APPROVED" } });
+    const totalProviders = await countProviders("APPROVED");
     const totalGuests = await db.guest.count();
     const totalRooms = await db.room.count();
 

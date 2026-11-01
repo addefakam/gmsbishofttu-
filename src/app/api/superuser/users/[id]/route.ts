@@ -101,8 +101,8 @@ export async function PUT(
     if (username !== undefined) updateData.username = username;
     if (password) updateData.password = await hashPassword(password);
     if (name !== undefined) updateData.name = name;
-    if (email !== undefined) updateData.email = email || null;
-    if (phone !== undefined) updateData.phone = phone || null;
+    if (email !== undefined) updateData.email = email || "";
+    if (phone !== undefined) updateData.phone = phone || "";
     if (role !== undefined) updateData.role = role;
     // policeRank is non-nullable in schema — always ensure it's a string
     if (role === "POLICE" && policeRank) {
@@ -117,8 +117,8 @@ export async function PUT(
     if (isActive !== undefined) updateData.isActive = isActive;
     // ── Police jurisdiction ──
     if (jurisdictionType !== undefined) updateData.jurisdictionType = jurisdictionType;
-    if (subCity !== undefined) updateData.subCity = subCity || null;
-    if (woreda !== undefined) updateData.woreda = woreda || null;
+    if (subCity !== undefined) updateData.subCity = subCity || "";
+    if (woreda !== undefined) updateData.woreda = woreda || "";
 
     const updated = await db.user.update({
       where: { id },

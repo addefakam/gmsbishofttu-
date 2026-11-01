@@ -570,17 +570,19 @@ export default function SuperUserManagementPage() {
       const payload: Record<string, unknown> = {
         username: form.username.trim(),
         name: form.name.trim(),
-        email: form.email.trim() || null,
-        phone: form.phone.trim() || null,
+        email: form.email.trim() || "",
+        phone: form.phone.trim() || "",
         role: form.role,
         policeRank: form.role === "POLICE" ? form.policeRank : "",
         permissions: (form.role === "STAFF" || form.role === "POLICE") ? form.permissions : [],
         providerId: (form.providerId && form.providerId !== "__none__") ? form.providerId : null,
         isActive: form.isActive,
         // ── Police jurisdiction ──
+        // Defensive: send "" instead of null — DB column is NOT NULL DEFAULT ''.
+        // (Backend route also coerces null → "", but be explicit at the source.)
         jurisdictionType: form.role === "POLICE" ? form.jurisdictionType : "CITY",
-        subCity: form.role === "POLICE" && form.jurisdictionType !== "CITY" ? form.subCity : null,
-        woreda: form.role === "POLICE" && form.jurisdictionType === "WOREDA" ? form.woreda : null,
+        subCity: form.role === "POLICE" && form.jurisdictionType !== "CITY" ? (form.subCity || "") : "",
+        woreda: form.role === "POLICE" && form.jurisdictionType === "WOREDA" ? (form.woreda || "") : "",
       };
       if (form.password) payload.password = form.password;
 

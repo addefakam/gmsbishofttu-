@@ -5,6 +5,7 @@ import { getAuthContext, AuthError } from "@/lib/tenant";
 import { hashPassword } from "@/lib/auth-utils";
 import { isValidPhone, isValidEmail } from "@/lib/utils";
 
+import { countProviders } from "@/lib/raw-queries";
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 // GET /api/superuser/users — List ALL users across all providers with stats
 export async function GET(req: NextRequest) {
@@ -81,11 +82,34 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    // Provider count
-    const providerCount = await db.provider.count();
-    const activeProviderCount = await db.provider.count({
-      where: { status: "APPROVED" },
-    });
+    // Provider count — uses the shared countProviders() helper from
+    // @/lib/raw-queries. Bypasses Prisma's enum type metadata (which
+    // generates $1::"ProviderStatus" and fails with 42883 when the DB
+    // column is still TEXT). The helper tries with cast first (works
+    // for enum column), falls back to no-cast (works for TEXT column).
+    let providerCount: number = 0;
+    let activeProviderCount: number = 0;
+    try {
+      [providerCount, activeProviderCount] = await Promise.all([
+        countProviders(),
+        countProviders("APPROVED"),
+      ]);
+    } catch (countErr: unknown) {
+      // Last-resort: try the auto-fix (creates enum types + converts
+      // TEXT columns to enum), then retry.
+      console.log("[superuser/users GET] countProviders() failed. Running autoFixEnumColumns() as last resort. Error:", countErr instanceof Error ? countErr.message : countErr);
+      try {
+        const { autoFixEnumColumns } = await import("@/lib/auto-fix-enum");
+        await autoFixEnumColumns();
+        [providerCount, activeProviderCount] = await Promise.all([
+          countProviders(),
+          countProviders("APPROVED"),
+        ]);
+      } catch (retryErr: unknown) {
+        console.error("[superuser/users GET] Auto-fix + retry also failed:", retryErr instanceof Error ? retryErr.message : retryErr);
+        throw retryErr;
+      }
+    }
 
     const roleCounts: Record<string, number> = {};
     for (const s of stats) {
@@ -172,16 +196,16 @@ export async function POST(req: NextRequest) {
         username,
         password: hashedPassword,
         name,
-        email: email || null,
-        phone: phone || null,
+        email: email || "",
+        phone: phone || "",
         role,
         policeRank: role === "POLICE" ? policeRank : "",
         permissions: typeof permissions === "string" ? permissions : JSON.stringify(permissions || []),
         providerId: providerId || null,
         isActive: isActive !== undefined ? isActive : true,
         jurisdictionType: jurisdictionType || "CITY",
-        subCity: subCity || null,
-        woreda: woreda || null,
+        subCity: subCity || "",
+        woreda: woreda || "",
       },
       select: {
         id: true,

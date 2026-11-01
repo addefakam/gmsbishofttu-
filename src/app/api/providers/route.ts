@@ -394,15 +394,38 @@ export async function POST(req: NextRequest) {
       const sysSettings = await db.settings.findFirst({
         where: { providerId: null },
       });
-      if (sysSettings?.configJson && typeof sysSettings.configJson === "object") {
-        const config = sysSettings.configJson as Record<string, unknown>;
+      if (!sysSettings) {
+        console.log("[providers/register] No system config row found (providerId=null). autoApprove stays false.");
+      } else if (sysSettings.configJson == null) {
+        console.log("[providers/register] System config row exists but configJson is null. autoApprove stays false.");
+      } else {
+        // Prisma's Json? field should deserialize to an object. But some older
+        // DB columns were TEXT — in that case Prisma returns a string. Parse
+        // defensively so a TEXT-stored JSON still works.
+        let config: Record<string, unknown>;
+        if (typeof sysSettings.configJson === "string") {
+          try { config = JSON.parse(sysSettings.configJson); }
+          catch { console.warn("[providers/register] configJson is a string but not parseable:", sysSettings.configJson); config = {}; }
+        } else if (typeof sysSettings.configJson === "object") {
+          config = sysSettings.configJson as Record<string, unknown>;
+        } else {
+          console.warn("[providers/register] Unexpected configJson type:", typeof sysSettings.configJson);
+          config = {};
+        }
         const guesthouse = config.guesthouse as Record<string, unknown> | undefined;
         if (guesthouse && typeof guesthouse.autoApproveGuesthouses === "boolean") {
           autoApprove = guesthouse.autoApproveGuesthouses;
+          console.log(`[providers/register] autoApprove resolved to ${autoApprove} from system config.`);
+        } else {
+          console.log("[providers/register] guesthouse.autoApproveGuesthouses missing or not a boolean. autoApprove stays false. config keys:", Object.keys(config));
         }
       }
-    } catch {
-      // Non-blocking — if we can't read the setting, default to PENDING.
+    } catch (readErr) {
+      // Non-blocking — log the real error so it's debuggable. Previously
+      // this was `catch {}` which silently swallowed connection errors,
+      // missing-column errors, etc. New registrations stayed PENDING and
+      // the user had no idea why.
+      console.error("[providers/register] Failed to read auto-approve system config:", readErr instanceof Error ? readErr.message : readErr);
     }
 
     const provider = await db.$transaction(async (tx) => {

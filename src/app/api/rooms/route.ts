@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import {
   getAuthContext,
   getProviderFilter,
@@ -9,6 +10,145 @@ import {
 import { runReservationMaintenance } from "@/lib/reservation-maintenance";
 import { logStaffActivity } from "@/lib/staff-log";
 import { ensureDatabase } from "@/lib/init-db";
+import { ensureCriticalTables } from "@/lib/ensure-tables";
+
+// ── Raw-SQL Room INSERT helper ────────────────────────────────────────────
+// Bypasses Prisma's runtime type validator entirely. After commits 6e0c0cf
+// (schema enum→String) and 578ca75 (init-db.ts enum→TEXT), the Prisma
+// runtime cache still rejects valid strings like 'SINGLE' with:
+//   "Error converting field 'type' of expected non-nullable type 'String',
+//    found incompatible value of 'SINGLE'"
+// even though the schema says String.
+//
+// HANDLES BOTH COLUMN TYPES (TEXT and enum)
+// Different DBs have different states for the type/status columns:
+//   - Some DBs: column is TEXT (created before enum types were set up;
+//     CREATE TABLE IF NOT EXISTS was a no-op on existing tables)
+//   - Other DBs: column is the proper enum type (RoomType / RoomStatus)
+//
+// Strategy: validate value against whitelist, use literal SQL with
+// explicit cast (safe because enum values come from a closed set).
+//   1. Try INSERT with `'SINGLE'::"RoomType"` cast (works for enum columns)
+//   2. If "type RoomType does not exist" or 42804 cast fails, retry with
+//      plain literal `'SINGLE'` (works for TEXT columns)
+
+const VALID_ROOM_TYPES = new Set([
+  "SINGLE", "DOUBLE", "TWIN", "SUITE", "DELUXE", "KING", "STANDARD",
+  "STANDARD_SUITE", "JUNIOR_SUITE", "EXECUTIVE_SUITE", "PRESIDENTIAL_SUITE",
+]);
+const VALID_ROOM_STATUSES = new Set([
+  "AVAILABLE", "OCCUPIED", "MAINTENANCE", "RESERVED",
+]);
+
+async function createRoomRaw(opts: {
+  number: string;
+  name: string;
+  type: string;
+  pricePerNight: number;
+  pricePerNightWeekend: number | null;
+  floor: number;
+  capacity: number;
+  amenities: string;
+  description: string;
+  image: string | null;
+  providerId: string;
+}): Promise<Record<string, unknown>> {
+  const id = `room_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+  // Validate enum values against whitelist — prevents SQL injection
+  // (since we use them as literals in the SQL below).
+  const safeType = VALID_ROOM_TYPES.has(opts.type) ? opts.type : "STANDARD";
+  const safeStatus = "AVAILABLE"; // always AVAILABLE for new rooms
+
+  // Build column list and parameter placeholders — everything except
+  // type and status, which are inlined as casted literals.
+  const cols = `"id", "number", "name", "type", "pricePerNight", "pricePerNightWeekend", "floor", "capacity", "status", "amenities", "description", "image", "providerId", "createdAt", "updatedAt"`;
+  const colsNoWeekend = `"id", "number", "name", "type", "pricePerNight", "floor", "capacity", "status", "amenities", "description", "image", "providerId", "createdAt", "updatedAt"`;
+
+  const otherParams = [
+    id, opts.number, opts.name, opts.pricePerNight,
+    opts.pricePerNightWeekend, opts.floor, opts.capacity,
+    opts.amenities, opts.description, opts.image, opts.providerId,
+  ];
+  const otherParamsNoWeekend = [
+    id, opts.number, opts.name, opts.pricePerNight,
+    opts.floor, opts.capacity,
+    opts.amenities, opts.description, opts.image, opts.providerId,
+  ];
+
+  // === Attempt 1: with explicit cast (works for enum columns) ===
+  // type and status are inlined as casted literals (not parameterized)
+  // because Prisma's $executeRawUnsafe parameter binding as text doesn't
+  // always cast properly to enum types — using a literal with ::"EnumType"
+  // cast is more reliable.
+  try {
+    await db.$executeRawUnsafe(
+      `INSERT INTO "Room" (${cols}) VALUES ($1, $2, $3, '${safeType}'::"RoomType", $4, $5, $6, $7, '${safeStatus}'::"RoomStatus", $8, $9, $10, $11, NOW(), NOW())`,
+      ...otherParams
+    );
+  } catch (castErr: unknown) {
+    const castMsg = castErr instanceof Error ? castErr.message : String(castErr);
+
+    // Enum type doesn't exist OR column is TEXT (cast fails differently)
+    // OR pricePerNightWeekend column doesn't exist
+    const enumTypeMissing = castMsg.includes('type "RoomType" does not exist') || castMsg.includes('RoomType does not exist');
+    const weekendMissing = castMsg.includes("pricePerNightWeekend") && castMsg.includes("does not exist");
+    const otherCastError = castMsg.includes("42804") || (castMsg.includes("is of type") && castMsg.includes("but expression is of type"));
+
+    if (enumTypeMissing || otherCastError) {
+      // === Attempt 2: no cast (works for TEXT columns) ===
+      console.log(`[createRoomRaw] Cast INSERT failed (column is TEXT or enum type missing). Retrying without cast. Error: ${castMsg}`);
+      try {
+        await db.$executeRawUnsafe(
+          `INSERT INTO "Room" (${cols}) VALUES ($1, $2, $3, '${safeType}', $4, $5, $6, $7, '${safeStatus}', $8, $9, $10, $11, NOW(), NOW())`,
+          ...otherParams
+        );
+      } catch (noCastErr: unknown) {
+        const noCastMsg = noCastErr instanceof Error ? noCastErr.message : String(noCastErr);
+        // Maybe pricePerNightWeekend column is missing
+        if (noCastMsg.includes("pricePerNightWeekend") && noCastMsg.includes("does not exist")) {
+          console.warn("[createRoomRaw] pricePerNightWeekend column missing — retrying without it.");
+          await db.$executeRawUnsafe(
+            `INSERT INTO "Room" (${colsNoWeekend}) VALUES ($1, $2, $3, '${safeType}', $4, $5, $6, '${safeStatus}', $7, $8, $9, $10, NOW(), NOW())`,
+            ...otherParamsNoWeekend
+          );
+        } else {
+          throw noCastErr;
+        }
+      }
+    } else if (weekendMissing) {
+      // Cast path worked but weekend column is missing — retry with cast but no weekend
+      console.warn("[createRoomRaw] pricePerNightWeekend column missing — retrying with cast but no weekend.");
+      try {
+        await db.$executeRawUnsafe(
+          `INSERT INTO "Room" (${colsNoWeekend}) VALUES ($1, $2, $3, '${safeType}'::"RoomType", $4, $5, $6, '${safeStatus}'::"RoomStatus", $7, $8, $9, $10, NOW(), NOW())`,
+          ...otherParamsNoWeekend
+        );
+      } catch (retryErr: unknown) {
+        const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+        // If cast still fails, try without cast
+        if (retryMsg.includes('type "RoomType" does not exist') || retryMsg.includes("42804") || (retryMsg.includes("is of type") && retryMsg.includes("but expression is of type"))) {
+          console.log("[createRoomRaw] Cast retry also failed. Falling back to no-cast, no-weekend.");
+          await db.$executeRawUnsafe(
+            `INSERT INTO "Room" (${colsNoWeekend}) VALUES ($1, $2, $3, '${safeType}', $4, $5, $6, '${safeStatus}', $7, $8, $9, $10, NOW(), NOW())`,
+            ...otherParamsNoWeekend
+          );
+        } else {
+          throw retryErr;
+        }
+      }
+    } else {
+      throw castErr;
+    }
+  }
+
+  // Fetch the created record (also via raw SQL)
+  const rows = await db.$queryRawUnsafe<Array<Record<string, unknown>>>(
+    `SELECT * FROM "Room" WHERE "id" = $1`,
+    id
+  );
+  return rows[0] ?? { id };
+}
 
 // ── Force dynamic rendering ──
 // Without this, Vercel may cache the API response at the edge, causing
@@ -19,6 +159,18 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    // ── CRITICAL: ensure GroupBooking + other JOIN targets exist ──
+    // /api/reservations GET (called in parallel from the Accommodation
+    // page) does LEFT JOIN "GroupBooking". If that table doesn't exist,
+    // Postgres throws 42P01. ensureCriticalTables() bypasses
+    // ensureDatabase() and uses Prisma's $executeRawUnsafe directly
+    // (no pg.Client, no _initDone cache flag). Cached per-instance.
+    try {
+      await ensureCriticalTables();
+    } catch (ensureErr) {
+      console.error("[rooms GET] ensureCriticalTables failed:", ensureErr instanceof Error ? ensureErr.message : ensureErr);
+    }
+
     // ensureDatabase runs the ALTER TABLE statements in init-db.ts that
     // add new columns (like pricePerNightWeekend) to existing DBs. Without
     // this call, the SELECT below fails on databases that haven't yet
@@ -215,43 +367,23 @@ export async function POST(req: NextRequest) {
             continue;
           }
           try {
-            await db.room.create({
-              data: {
-                number: String(number),
-                name: name ? String(name) : `Room ${number}`,
-                type: String(type).toUpperCase() as import("@prisma/client").RoomType,
-                pricePerNight: pricePerNight == null || pricePerNight === "" ? 0 : Number(pricePerNight),
-                // Weekend price is optional — null/empty/0 means "use weekday rate for all nights"
-                pricePerNightWeekend: pricePerNightWeekend == null || pricePerNightWeekend === "" ? null : Number(pricePerNightWeekend),
-                floor: Number(floor),
-                capacity: Number(capacity),
-                amenities: amenities ? JSON.stringify(String(amenities).split(",").map((s: string) => s.trim()).filter(Boolean)) : "[]",
-                description: description ? String(description) : "",
-                providerId: auth.providerId,
-              },
+            await createRoomRaw({
+              number: String(number),
+              name: name ? String(name) : `Room ${number}`,
+              type: String(type).toUpperCase(),
+              pricePerNight: pricePerNight == null || pricePerNight === "" ? 0 : Number(pricePerNight),
+              pricePerNightWeekend: pricePerNightWeekend == null || pricePerNightWeekend === "" ? null : Number(pricePerNightWeekend),
+              floor: Number(floor),
+              capacity: Number(capacity),
+              amenities: amenities ? JSON.stringify(String(amenities).split(",").map((s: string) => s.trim()).filter(Boolean)) : "[]",
+              description: description ? String(description) : "",
+              image: null,
+              providerId: auth.providerId!,
             });
           } catch (createErr: unknown) {
-            // Fallback for production DBs that don't have the pricePerNightWeekend
-            // column yet — create without the weekend price.
-            const errMsg = createErr instanceof Error ? createErr.message : String(createErr);
-            if (errMsg.includes("pricePerNightWeekend") && errMsg.includes("does not exist")) {
-              console.warn("[rooms bulk] pricePerNightWeekend column not found — creating room without weekend price.");
-              await db.room.create({
-                data: {
-                  number: String(number),
-                  name: name ? String(name) : `Room ${number}`,
-                  type: String(type).toUpperCase() as import("@prisma/client").RoomType,
-                  pricePerNight: pricePerNight == null || pricePerNight === "" ? 0 : Number(pricePerNight),
-                  floor: Number(floor),
-                  capacity: Number(capacity),
-                  amenities: amenities ? JSON.stringify(String(amenities).split(",").map((s: string) => s.trim()).filter(Boolean)) : "[]",
-                  description: description ? String(description) : "",
-                  providerId: auth.providerId,
-                },
-              });
-            } else {
-              throw createErr;
-            }
+            // createRoomRaw already handles the pricePerNightWeekend fallback
+            // internally. Re-throw for the outer bulk-result handler.
+            throw createErr;
           }
           results.push({ number: String(number), status: "created" });
         } catch {
@@ -324,79 +456,23 @@ export async function POST(req: NextRequest) {
     // Weekend price is OPTIONAL — null/empty means "no weekend premium, use weekday rate for all nights".
     const weekendPriceVal = pricePerNightWeekend == null || pricePerNightWeekend === "" ? null : Number(pricePerNightWeekend);
 
-    let room;
-
-    // Prisma connection doesn't see it yet (PostgreSQL caches prepared
-    // statements per-connection). We add the enum value explicitly
-    // and retry with a fresh PrismaClient instance.
-    try {
-      room = await db.room.create({
-        data: {
-          number,
-          name: name || `Room ${number}`,
-          type,
-          pricePerNight: priceVal,
-          pricePerNightWeekend: weekendPriceVal,
-          floor: Number(floor),
-          capacity: Number(capacity),
-          amenities: amenities || "[]",
-          description: description || "",
-          image: image || null,
-          providerId: auth.providerId,
-        },
-      });
-    } catch (createErr: unknown) {
-      const errMsg = createErr instanceof Error ? createErr.message : String(createErr);
-
-      if (errMsg.includes("pricePerNightWeekend") && errMsg.includes("does not exist")) {
-        // Fallback: the production DB hasn't had the ALTER TABLE run yet.
-        // Create the room WITHOUT the weekend price (will be null). The
-        // ALTER TABLE in init-db.ts will run on the next ensureDatabase()
-        // call, after which weekend price can be set via PUT.
-        console.warn("[rooms POST] pricePerNightWeekend column not found — creating room without weekend price.");
-        room = await db.room.create({
-          data: {
-            number,
-            name: name || `Room ${number}`,
-            type,
-            pricePerNight: priceVal,
-            floor: Number(floor),
-            capacity: Number(capacity),
-            amenities: amenities || "[]",
-            description: description || "",
-            image: image || null,
-            providerId: auth.providerId,
-          },
-        });
-      } else if (errMsg.includes("22P02") || errMsg.includes("invalid input value for enum")) {
-
-        // Force-add the enum value (this works even if already present due to IF NOT EXISTS)
-        const { Prisma, PrismaClient } = await import("@prisma/client");
-        const freshClient = new PrismaClient();
-        try {
-          // Use the fresh client (which sees the new enum value) to create the room
-          room = await freshClient.room.create({
-            data: {
-              number,
-              name: name || `Room ${number}`,
-              type,
-              pricePerNight: priceVal,
-              pricePerNightWeekend: weekendPriceVal,
-              floor: Number(floor),
-              capacity: Number(capacity),
-              amenities: amenities || "[]",
-              description: description || "",
-              image: image || null,
-              providerId: auth.providerId,
-            },
-          });
-        } finally {
-          await freshClient.$disconnect();
-        }
-      } else {
-        throw createErr; // Re-throw if it's a different error
-      }
-    }
+    // Use createRoomRaw helper — bypasses Prisma's runtime type validator
+    // (which still has cached enum metadata and rejects 'SINGLE' even though
+    // the schema says String). The helper also handles the pricePerNightWeekend
+    // column-doesn't-exist fallback internally.
+    const room = await createRoomRaw({
+      number,
+      name: name || `Room ${number}`,
+      type,
+      pricePerNight: priceVal,
+      pricePerNightWeekend: weekendPriceVal,
+      floor: Number(floor),
+      capacity: Number(capacity),
+      amenities: amenities || "[]",
+      description: description || "",
+      image: image || null,
+      providerId: auth.providerId!,
+    });
 
     // Staff activity log
     logStaffActivity({
