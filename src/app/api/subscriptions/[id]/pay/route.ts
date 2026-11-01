@@ -4,12 +4,14 @@ import { getAuthContext, AuthError } from "@/lib/tenant";
 import { calcNextEndDate, CYCLE_DAYS, TRIAL_DAYS, calcSubscriptionStatus } from "@/lib/subscription";
 import { logAudit } from "@/lib/audit";
 
+import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
 const VALID_CYCLES = ["MONTHLY", "QUARTERLY", "SEMI_ANNUAL", "YEARLY"] as const;
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureSettingsColumns();
   try {
     const auth = await getAuthContext(req);
 

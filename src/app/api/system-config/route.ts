@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAuthContext, AuthError } from "@/lib/tenant";
 
+import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
 const DEFAULT_PAYMENT = {
   trialDays: 15,
   warningDays: 7,
@@ -25,6 +26,7 @@ const DEFAULT_PAYMENT = {
  * Deploy-blocker fix: requires authenticated session.
  */
 export async function GET(req: NextRequest) {
+    await ensureSettingsColumns();
   try {
     // ── Deploy-blocker fix: require auth — this leaks payment config ──
     const auth = await getAuthContext(req);

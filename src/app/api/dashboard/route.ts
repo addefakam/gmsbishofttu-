@@ -6,9 +6,11 @@ import { calcSubscriptionStatus, TRIAL_DAYS } from "@/lib/subscription";
 import { todayStr } from "@/lib/reservation-maintenance";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
+import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    await ensureSettingsColumns();
     await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { logAudit } from "@/lib/audit";
 import { hashPassword, verifyPassword, createToken, type JWTPayload } from "@/lib/auth-utils";
 import { ensureNewTables } from "@/lib/ensure-tables";
+import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
 
 // Detect if SSL is needed based on DATABASE_URL
 function needsSsl(): boolean {
@@ -238,6 +239,14 @@ export async function POST(req: NextRequest) {
         console.log("[auth] Full database migration completed.");
       } catch (migErr) {
         console.warn("[auth] Migration failed (non-blocking — will retry on next request):", migErr instanceof Error ? migErr.message : migErr);
+      }
+
+      // Ensure Settings table + ALL columns (especially configJson which
+      // is missing on older deploys). Runs in cached mode after first call.
+      try {
+        await ensureSettingsColumns();
+      } catch (settingsErr) {
+        console.warn("[auth] ensureSettingsColumns failed (non-blocking):", settingsErr instanceof Error ? settingsErr.message : settingsErr);
       }
 
       // Query the user

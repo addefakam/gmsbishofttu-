@@ -5,6 +5,7 @@ import { uploadFile } from "@/lib/storage";
 import { isValidPhone, isValidEmail } from "@/lib/utils";
 import { logStaffActivity } from "@/lib/staff-log";
 
+import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
 const DEFAULT_SETTINGS = {
   guestHouseName: "Guest House",
   ownerName: "",
@@ -20,6 +21,7 @@ const DEFAULT_SETTINGS = {
 };
 
 export async function GET(req: NextRequest) {
+    await ensureSettingsColumns();
   try {
     const auth = await getAuthContext(req);
 
@@ -67,6 +69,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+    await ensureSettingsColumns();
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { allowSuperuser: true });

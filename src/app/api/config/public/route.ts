@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
 /**
  * GET /api/config/public
  *
@@ -17,6 +18,7 @@ import { db } from "@/lib/db";
  * supportPhone so the client falls back to "no support line shown".
  */
 export async function GET() {
+    await ensureSettingsColumns();
   try {
     const sysSettings = await db.settings.findFirst({
       where: { providerId: null },

@@ -4,6 +4,7 @@ import { getAuthContext, AuthError } from "@/lib/tenant";
 import { calcSubscriptionStatus, TRIAL_DAYS, WARNING_DAYS, GRACE_DAYS, type SubscriptionStatus } from "@/lib/subscription";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
+import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
 async function getPaymentConfig() {
   try {
     const sysSettings = await db.settings.findFirst({
@@ -27,6 +28,7 @@ async function getPaymentConfig() {
 }
 
 export async function GET(req: NextRequest) {
+    await ensureSettingsColumns();
     await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
