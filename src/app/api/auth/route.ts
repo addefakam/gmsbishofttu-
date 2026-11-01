@@ -229,6 +229,25 @@ export async function POST(req: NextRequest) {
       `);
       console.log("[auth] Admin user ensured.");
 
+      // Seed default POLICE admin user if not exists.
+      // The police app (/police-app) needs a POLICE role account to log in.
+      // Without this seed, police users have no way to log in (the SUPERUSER
+      // 'admin' account can access /police-app too, but police-only flows
+      // need a true POLICE role with policeRank='ADMIN').
+      //
+      // Default credentials:
+      //   username: police
+      //   password: Police@2024
+      // (Same backward-compat plain-text format as the SUPERUSER seed —
+      // verifyPassword() handles both plain-text and bcrypt-hashed passwords.
+      // The auth route auto-migrates to bcrypt on first successful login.)
+      await client.query(`
+        INSERT INTO "User" ("id", "username", "password", "name", "role", "permissions", "policeRank", "jurisdictionType", "isActive", "createdAt", "updatedAt")
+        VALUES ('police-admin-001', 'police', 'Police@2024', 'Police Administrator', 'POLICE', '[]', 'ADMIN', 'CITY', true, NOW(), NOW())
+        ON CONFLICT ("username") DO NOTHING
+      `);
+      console.log("[auth] Police admin user ensured.");
+
       // Run the FULL database migration (creates ALL 30+ tables with ALL
       // columns). This runs via init-db.ts which uses pg.Client with SSL.
       // This ensures that by the time login completes, ALL tables exist
