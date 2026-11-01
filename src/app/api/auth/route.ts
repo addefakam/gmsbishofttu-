@@ -160,15 +160,29 @@ export async function POST(req: NextRequest) {
           await client.query(`ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
         } catch {}
       }
-      // Same for User table
+      // Same for User table — add ALL columns referenced in the login query
+      // (and elsewhere). Older deploys created User with just the basics
+      // (id, username, password, name, role, createdAt, updatedAt) so we
+      // must ALTER ADD COLUMN for everything else.
       const userColumns = [
         ['email', 'TEXT NOT NULL DEFAULT \'\''],
         ['phone', 'TEXT NOT NULL DEFAULT \'\''],
+        ['permissions', 'TEXT NOT NULL DEFAULT \'["reservations","guests"]\''],
+        ['policeRank', 'TEXT NOT NULL DEFAULT \'\''],
+        ['isActive', 'BOOLEAN NOT NULL DEFAULT true'],
+        ['lastLogin', 'TIMESTAMP(3)'],
+        ['providerId', 'TEXT'],
+        ['createdBy', 'TEXT'],
+        ['jurisdictionType', 'TEXT NOT NULL DEFAULT \'CITY\''],
+        ['subCity', 'TEXT NOT NULL DEFAULT \'\''],
+        ['woreda', 'TEXT NOT NULL DEFAULT \'\''],
       ];
       for (const [col, def] of userColumns) {
         try {
           await client.query(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
-        } catch {}
+        } catch (colErr) {
+          console.warn(`[auth] Could not add User.${col}:`, colErr instanceof Error ? colErr.message : colErr);
+        }
       }
 
       // Now create the Provider table with proper enum type (if it doesn't exist)
