@@ -3,6 +3,7 @@ import "./globals.css";
 import "@/i18n/config";
 import { Toaster } from "@/components/ui/sonner";
 import { initToastErrorWrapper, setSupportPhone } from "@/lib/support";
+import { EmergencyCallButton } from "@/components/shared/emergency-call-button";
 
 // ── One-time setup: wrap sonner's toast.error so EVERY error toast in
 // the app automatically appends "For help, call: <phone>" when a
@@ -44,6 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans antialiased">
         {children}
         <Toaster richColors position="top-right" />
+        {/* Floating Emergency Call button — bottom-right corner.
+            Tap to expand → shows Bishoftu Police (9141) + Hospital (5645). */}
+        <EmergencyCallButton />
       </body>
     </html>
   );
