@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getAuthContext, getProviderFilter, AuthError } from "@/lib/tenant";
 import { runReservationMaintenance, todayStr } from "@/lib/reservation-maintenance";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 /**
  * Per-room availability — returns the booked date ranges that block new
  * bookings for this room.
@@ -19,6 +20,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     const { isPolice, providerId } = getProviderFilter(auth);

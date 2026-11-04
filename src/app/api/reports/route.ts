@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAuthContext, getProviderFilter, AuthError } from "@/lib/tenant";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export async function GET(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     const { providerId } = getProviderFilter(auth);

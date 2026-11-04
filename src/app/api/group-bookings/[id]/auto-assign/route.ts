@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAuthContext, getProviderFilter, AuthError, checkWritePermission } from "@/lib/tenant";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 /**
  * POST /api/group-bookings/[id]/auto-assign
  * Automatically assigns available rooms to guests in a group booking.
@@ -9,6 +10,7 @@ import { getAuthContext, getProviderFilter, AuthError, checkWritePermission } fr
  * Returns the full assignment map: guest → room.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     const { providerId } = getProviderFilter(auth);

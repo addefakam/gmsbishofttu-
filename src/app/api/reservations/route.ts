@@ -10,11 +10,13 @@ import { calculateStayTotal } from "@/lib/room-pricing";
 import { ensureDatabase } from "@/lib/init-db";
 import { ensureCriticalTables } from "@/lib/ensure-tables";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 // ── Force dynamic rendering ──
 // Prevents Vercel from caching stale reservation data at the edge.
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     // ── CRITICAL: ensure GroupBooking table exists BEFORE the LEFT JOIN ──
     // The raw SQL below does LEFT JOIN "GroupBooking" — if that table
@@ -206,6 +208,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     const { providerId } = getProviderFilter(auth);

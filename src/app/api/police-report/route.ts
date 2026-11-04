@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -40,6 +41,7 @@ function riskBadge(risk: string): string {
 
 export async function GET(req: NextRequest) {
     await ensureNotNullableDefaults();
+    await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);

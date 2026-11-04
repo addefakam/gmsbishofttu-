@@ -4,6 +4,7 @@ import { hashPassword, verifyPassword, createToken, type JWTPayload } from "@/li
 import { ensureNewTables } from "@/lib/ensure-tables";
 import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
 import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 
 // Detect if SSL is needed based on DATABASE_URL
 function needsSsl(): boolean {
@@ -261,23 +262,20 @@ export async function POST(req: NextRequest) {
         console.warn("[auth] Migration failed (non-blocking — will retry on next request):", migErr instanceof Error ? migErr.message : migErr);
       }
 
-      // Ensure Settings table + ALL columns (especially configJson which
-      // is missing on older deploys). Runs in cached mode after first call.
-      try {
-        await ensureSettingsColumns();
-      } catch (settingsErr) {
-        console.warn("[auth] ensureSettingsColumns failed (non-blocking):", settingsErr instanceof Error ? settingsErr.message : settingsErr);
+      // Ensure Settings table + ALL columns (especially configJson).
+      try { await ensureSettingsColumns(); } catch (e) {
+        console.warn("[auth] ensureSettingsColumns failed:", e instanceof Error ? e.message : e);
       }
 
-      // Backfill NULL values with schema defaults for non-nullable columns.
-      // Existing rows may have NULL due to ALTER TABLE ADD COLUMN behavior
-      // (NULL is stored for existing rows even when DEFAULT is set). Prisma
-      // throws 'expected non-nullable type "String", found null' when this
-      // happens. This UPDATEs all NULL values to their schema defaults.
-      try {
-        await ensureNotNullableDefaults();
-      } catch (nullErr) {
-        console.warn("[auth] ensureNotNullableDefaults failed (non-blocking):", nullErr instanceof Error ? nullErr.message : nullErr);
+      // Backfill NULL values in non-nullable User/Provider columns.
+      try { await ensureNotNullableDefaults(); } catch (e) {
+        console.warn("[auth] ensureNotNullableDefaults failed:", e instanceof Error ? e.message : e);
+      }
+
+      // Repair Reservation → Room referential integrity (creates placeholder
+      // Room, reassigns orphan reservations, backfills NULLs, adds FK).
+      try { await ensureReservationIntegrity(); } catch (e) {
+        console.warn("[auth] ensureReservationIntegrity failed:", e instanceof Error ? e.message : e);
       }
 
       // Query the user

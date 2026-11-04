@@ -4,10 +4,12 @@ import { getAuthContext, getProviderFilter, checkWritePermission, AuthError } fr
 import { ensureReservationStatusEnum } from "@/lib/ensure-enum-values";
 
 import { logStaffActivity } from "@/lib/staff-log";
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     const { providerId } = getProviderFilter(auth);
@@ -222,6 +224,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { requireSuperuserOrOperator: true });

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getAuthContext, getProviderFilter, AuthError } from "@/lib/tenant";
 import { logStaffActivity, getLogUserInfo } from "@/lib/staff-log";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 interface TemplateVars {
   guestName?: string;
   roomNumber?: string;
@@ -27,6 +28,7 @@ function renderTemplate(body: string, vars: TemplateVars): string {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     const { providerId } = getProviderFilter(auth);

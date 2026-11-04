@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { ensureSettingsColumns } from "@/lib/ensure-settings-columns";
 import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 /**
  * Turso/LibSQL does NOT reliably support Prisma's upsert() (INSERT ... ON CONFLICT).
  * This helper replaces upsert with findFirst + create/update pattern.
@@ -25,6 +26,7 @@ async function safeUpsert<T extends { id: string }>(
 export async function GET(req: NextRequest) {
     await ensureNotNullableDefaults();
     await ensureSettingsColumns();
+    await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
@@ -180,6 +182,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     await ensureNotNullableDefaults();
     await ensureSettingsColumns();
+    await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);

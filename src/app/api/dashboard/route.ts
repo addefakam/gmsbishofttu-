@@ -13,6 +13,11 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
     await ensureNotNullableDefaults();
     await ensureSettingsColumns();
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
+    await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);

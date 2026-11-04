@@ -4,6 +4,7 @@ import { getAuthContext, getProviderFilter, checkWritePermission, AuthError } fr
 import { runAnomalyDetection } from "@/lib/anomaly-engine";
 import { logStaffActivity, getLogUserInfo } from "@/lib/staff-log";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 /**
  * POST /api/reservations/bulk-action
  *
@@ -47,6 +48,7 @@ import { logStaffActivity, getLogUserInfo } from "@/lib/staff-log";
  *   }
  */
 export async function POST(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { staffPermissionKey: "reservations", staffCanCreate: true });

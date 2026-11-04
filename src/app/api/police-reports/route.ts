@@ -11,6 +11,9 @@ import { autoFixEnumColumns } from "@/lib/auto-fix-enum";
 import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 export async function GET(req: NextRequest) {
     await ensureNotNullableDefaults();
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
+export async function GET(req: NextRequest) {
+    await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
     // ── CRITICAL: auto-fix enum/TEXT column mismatch BEFORE any Prisma call ──
     // The DB column for Provider.status (and other enum-typed fields) might

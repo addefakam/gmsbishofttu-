@@ -6,7 +6,9 @@ import { ensureNewTables } from "@/lib/ensure-tables";
 import { isValidPhone, isValidEmail } from "@/lib/utils";
 import { calculateStayTotal } from "@/lib/room-pricing";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export async function GET(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     // ensureNewTables() internally calls ensureOwnerTables() which creates
     // the 3 new owner feature tables on every call.
@@ -74,6 +76,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     await ensureNewTables();
     const auth = await getAuthContext(req);

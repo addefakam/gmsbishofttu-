@@ -9,10 +9,12 @@ import { isValidPhone } from "@/lib/utils";
 import { normalizeIdType } from "@/lib/national-id";
 import { normalizeNationality } from "@/lib/nationalities";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 5;
 
 export async function GET(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     requirePolice(auth);
@@ -256,6 +258,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     requirePolice(auth);

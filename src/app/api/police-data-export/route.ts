@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 // Hard cap to prevent runaway exports. Vercel hobby plan has 1GB memory limit.
 // 10K rows × ~1KB each ≈ 10MB — well within budget.
 const MAX_ROWS_PER_ENTITY = 10000;
@@ -92,6 +93,7 @@ function serialize(val: unknown): unknown {
 
 export async function GET(req: NextRequest) {
     await ensureNotNullableDefaults();
+    await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);

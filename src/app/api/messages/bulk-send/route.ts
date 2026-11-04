@@ -3,11 +3,13 @@ import { db } from "@/lib/db";
 import { getAuthContext, getProviderFilter, AuthError } from "@/lib/tenant";
 import { logStaffActivity, getLogUserInfo } from "@/lib/staff-log";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 /**
  * Bulk send messages to guests matching a reservation status filter.
  * Uses a template and renders it per guest.
  */
 export async function POST(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     const { providerId } = getProviderFilter(auth);

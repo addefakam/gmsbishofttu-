@@ -6,10 +6,12 @@ import { ensureSuspectTables } from "@/lib/suspect-check";
 import { Prisma } from "@prisma/client";
 import { isValidPhone } from "@/lib/utils";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     requirePolice(auth);
@@ -107,6 +109,7 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     requirePolice(auth);
@@ -190,6 +193,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     requirePolice(auth);

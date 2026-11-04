@@ -6,10 +6,12 @@ import { getAuthContext,
 import { uploadFile } from "@/lib/storage";
 import { logStaffActivity } from "@/lib/staff-log";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { staffPermissionKey: "rooms" });
@@ -202,6 +204,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { staffPermissionKey: "rooms" });

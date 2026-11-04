@@ -150,6 +150,7 @@ async function createRoomRaw(opts: {
   return rows[0] ?? { id };
 }
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 // ── Force dynamic rendering ──
 // Without this, Vercel may cache the API response at the edge, causing
 // stale data (old room statuses, old reservations) to be served even
@@ -158,6 +159,7 @@ async function createRoomRaw(opts: {
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     // ── CRITICAL: ensure GroupBooking + other JOIN targets exist ──
     // /api/reservations GET (called in parallel from the Accommodation
@@ -329,6 +331,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { staffPermissionKey: "rooms" });
