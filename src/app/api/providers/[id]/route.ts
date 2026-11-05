@@ -5,11 +5,13 @@ import { logAudit } from "@/lib/audit";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
     await ensureNotNullableDefaults();
+    await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
@@ -38,6 +40,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
     await ensureNotNullableDefaults();
+    await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);
@@ -141,6 +144,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
     await ensureNotNullableDefaults();
+    await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
   try {
     const auth = await getAuthContext(req);

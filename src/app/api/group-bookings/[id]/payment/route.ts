@@ -3,10 +3,12 @@ import { db } from "@/lib/db";
 import { getAuthContext, getProviderFilter, checkWritePermission, AuthError } from "@/lib/tenant";
 import { logStaffActivity, getLogUserInfo } from "@/lib/staff-log";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { staffPermissionKey: "reservations" });

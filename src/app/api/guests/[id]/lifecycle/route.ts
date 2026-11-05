@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAuthContext, getProviderFilter, AuthError } from "@/lib/tenant";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 /**
  * GET /api/guests/[id]/lifecycle
  *
@@ -31,6 +32,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     const { isPolice, providerId } = getProviderFilter(auth);

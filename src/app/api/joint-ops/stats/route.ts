@@ -6,6 +6,7 @@ import { getAuthContext, AuthError } from "@/lib/tenant";
 
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 /**
  * GET /api/joint-ops/stats
  *
@@ -14,6 +15,7 @@ import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
  */
 export async function GET(req: NextRequest) {
     await ensureNotNullableDefaults();
+    await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
   try {
     // ── Deploy-blocker fix: require authenticated session first ──

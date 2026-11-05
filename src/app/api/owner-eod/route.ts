@@ -5,6 +5,7 @@ import { ensureNewTables } from "@/lib/ensure-tables";
 import { logStaffActivity, getLogUserInfo } from "@/lib/staff-log";
 import { todayStr } from "@/lib/reservation-maintenance";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export const dynamic = "force-dynamic";
 
 /**
@@ -59,6 +60,7 @@ async function ensureEndOfDayReportTable(): Promise<void> {
  * the counted cash + sign off.
  */
 export async function GET(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     await ensureEndOfDayReportTable();
     await ensureNewTables();
@@ -175,6 +177,7 @@ export async function GET(req: NextRequest) {
  * Signs off the End-of-Day report for the given date.
  */
 export async function POST(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     await ensureEndOfDayReportTable();
     await ensureNewTables();

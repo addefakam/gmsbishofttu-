@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
     await ensureNotNullableDefaults();
 import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest) {
     await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
     // ── CRITICAL: auto-fix enum/TEXT column mismatch BEFORE any Prisma call ──

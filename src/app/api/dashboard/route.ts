@@ -17,6 +17,9 @@ import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
     await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
   try {

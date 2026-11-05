@@ -5,7 +5,9 @@ import { getAuthContext, requirePolice, AuthError } from "@/lib/tenant";
 import { logAudit } from "@/lib/audit";
 import { ensureSuspectTables } from "@/lib/suspect-check";
 
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export async function GET(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     // Allow POLICE, SUPERUSER, and OPERATOR to view suspect matches.
@@ -102,6 +104,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+    await ensureReservationIntegrity();
   try {
     const auth = await getAuthContext(req);
     requirePolice(auth);
