@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { logStaffActivity } from "@/lib/staff-log";
 import { getAuthContext,
   getProviderFilter,
   checkWritePermission, AuthError } from "@/lib/tenant";
-import { logStaffActivity } from "@/lib/staff-log";
 
 export async function PUT(
   req: NextRequest,

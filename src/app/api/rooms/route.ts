@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { runReservationMaintenance } from "@/lib/reservation-maintenance";
+import { logStaffActivity } from "@/lib/staff-log";
+import { ensureDatabase } from "@/lib/init-db";
+import { ensureCriticalTables } from "@/lib/ensure-tables";
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 import {
   getAuthContext,
   getProviderFilter,
   checkWritePermission,
   AuthError,
 } from "@/lib/tenant";
-import { runReservationMaintenance } from "@/lib/reservation-maintenance";
-import { logStaffActivity } from "@/lib/staff-log";
-import { ensureDatabase } from "@/lib/init-db";
-import { ensureCriticalTables } from "@/lib/ensure-tables";
 
 // ── Raw-SQL Room INSERT helper ────────────────────────────────────────────
 // Bypasses Prisma's runtime type validator entirely. After commits 6e0c0cf
@@ -150,7 +151,6 @@ async function createRoomRaw(opts: {
   return rows[0] ?? { id };
 }
 
-import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 // ── Force dynamic rendering ──
 // Without this, Vercel may cache the API response at the edge, causing
 // stale data (old room statuses, old reservations) to be served even

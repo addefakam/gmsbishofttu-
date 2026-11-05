@@ -9,13 +9,12 @@ import { resetInitFlag, ensureDatabase } from "@/lib/init-db";
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { autoFixEnumColumns } from "@/lib/auto-fix-enum";
 import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
-export async function GET(req: NextRequest) {
-    await ensureNotNullableDefaults();
 import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
-export async function GET(req: NextRequest) {
+
 export async function GET(req: NextRequest) {
     await ensureReservationIntegrity();
     await ensureProviderStatusEnum();
+    await ensureNotNullableDefaults();
     // ── CRITICAL: auto-fix enum/TEXT column mismatch BEFORE any Prisma call ──
     // The DB column for Provider.status (and other enum-typed fields) might
     // still be TEXT. Native db.provider.count({ where: { status: ... } })

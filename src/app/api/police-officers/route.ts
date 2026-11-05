@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAuthContext, requirePolice, AuthError } from "@/lib/tenant";
+import { logAudit } from "@/lib/audit";
+import { hashPassword } from "@/lib/auth-utils";
+import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 import {
   requirePoliceMinRank,
   POLICE_RANKS,
   RANK_LABELS,
   type PoliceRank,
 } from "@/lib/police-permissions";
-import { logAudit } from "@/lib/audit";
-import { hashPassword } from "@/lib/auth-utils";
 
-import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 // Hierarchy levels — higher number = more authority
 const RANK_HIERARCHY: Record<PoliceRank, number> = {
   VIEWER: 0,

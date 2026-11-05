@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { ensureNewTables } from "@/lib/ensure-tables";
 import { getAuthContext,
   getProviderFilter,
   checkWritePermission, AuthError } from "@/lib/tenant";
-import { ensureNewTables } from "@/lib/ensure-tables";
 
 export async function PUT(
   req: NextRequest,
