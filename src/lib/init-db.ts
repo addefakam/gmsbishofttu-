@@ -108,7 +108,9 @@ CREATE TABLE IF NOT EXISTS "Guest" (
   "vip" BOOLEAN NOT NULL DEFAULT false,
   "totalSpent" DOUBLE PRECISION NOT NULL DEFAULT 0,
   "totalStays" INTEGER NOT NULL DEFAULT 0,
-  "providerId" TEXT NOT NULL,
+  "providerId" TEXT,
+  "otpCode" TEXT,
+  "otpExpiresAt" TIMESTAMP(3),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -136,6 +138,7 @@ CREATE TABLE IF NOT EXISTS "Reservation" (
   "secondGuestIdNumber" TEXT NOT NULL DEFAULT '',
   "exceptionallyReserved" BOOLEAN NOT NULL DEFAULT false,
   "exceptionReason" TEXT NOT NULL DEFAULT '',
+  "guestNotes" TEXT NOT NULL DEFAULT '',
   "providerId" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -597,6 +600,23 @@ END $$;
 DO $$ BEGIN
   ALTER TABLE "Reservation" ADD COLUMN "exceptionReason" TEXT NOT NULL DEFAULT '';
 EXCEPTION WHEN duplicate_column THEN null;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE "Reservation" ADD COLUMN "guestNotes" TEXT NOT NULL DEFAULT '';
+EXCEPTION WHEN duplicate_column THEN null;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE "Guest" ADD COLUMN "otpCode" TEXT;
+EXCEPTION WHEN duplicate_column THEN null;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE "Guest" ADD COLUMN "otpExpiresAt" TIMESTAMP(3);
+EXCEPTION WHEN duplicate_column THEN null;
+END $$;
+-- Also make Guest.providerId nullable (for OTP-registered guests without a provider)
+DO $$ BEGIN
+  ALTER TABLE "Guest" ALTER COLUMN "providerId" DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN null;
 END $$;
 DO $$ BEGIN
   ALTER TABLE "Provider" ADD COLUMN "telegramChatId" TEXT;

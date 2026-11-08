@@ -282,11 +282,16 @@ model Guest {
   vip         Boolean  @default(false)
   totalSpent  Float    @default(0)
   totalStays  Int      @default(0)
-  providerId  String
+  providerId  String?
+  // ── Guest Room Finder app (OTP auth) ──
+  // Used by /api/guest-auth/otp/* endpoints to verify phone-based login.
+  // Null when no OTP is pending.
+  otpCode      String?
+  otpExpiresAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  provider     Provider  @relation(fields: [providerId], references: [id])
+  provider     Provider?  @relation(fields: [providerId], references: [id])
   reservations Reservation[]
   reviews      Review[]
 
@@ -327,6 +332,11 @@ model Reservation {
   // Exceptional reservation (one guest in double room)
   exceptionallyReserved Boolean        @default(false)
   exceptionReason     String           @default("")
+  // ── Guest Room Finder app ──
+  // Optional message from guest to provider when requesting a booking
+  // (e.g. "I'll arrive around 6pm"). Stored on the reservation so the
+  // provider sees it in their dashboard.
+  guestNotes           String           @default("")
   providerId      String
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt

@@ -1891,7 +1891,7 @@
     "btnSelectExisting": "Select existing",
     "btnRegisterNewGuest": "Register new guest",
     "placeholderSelectGuest": "Select a guest",
-    "placeholderSelectRoom": "Select an available room",
+    "placeholderSelectRoom": "Select a room",
     "noAvailableRooms": "No available rooms",
     "lblRoom": "Room",
     "etbPerNight": "ETB/night",
@@ -1914,8 +1914,6 @@
     "lblidNumber": "ID Number",
     "lblcheckinDate": "Check-in Date",
     "lblcheckoutDate": "Check-out Date",
-    "lblRoom": "Room",
-    "placeholderSelectRoom": "Select a room",
     "btnRegistering": "Registering...",
     "btnRegisterSelect": "Register & Select Guest",
     "btnAdding": "Adding...",
@@ -3759,5 +3757,143 @@
     "saveOps": "Save Operational Config",
     "opsSaved": "Operational config saved",
     "dropdownLabel": "Organization Profile"
+  },
+  "findApp": {
+    "appName": "Bishoftu Rooms",
+    "tagline": "Find your perfect guesthouse room in Bishoftu",
+    "search": {
+      "title": "Find a Room",
+      "checkIn": "Check-in date",
+      "checkOut": "Check-out date",
+      "roomType": "Room type",
+      "allTypes": "All types",
+      "priceRange": "Price range (ETB/night)",
+      "minPrice": "Min price",
+      "maxPrice": "Max price",
+      "subCity": "Sub-city",
+      "allSubCities": "All sub-cities",
+      "searchButton": "Search rooms",
+      "clearButton": "Clear filters",
+      "results": "{{count}} rooms found",
+      "noResults": "No rooms match your filters. Try adjusting your search.",
+      "loading": "Searching for available rooms..."
+    },
+    "roomTypes": {
+      "SINGLE": "Single",
+      "DOUBLE": "Double",
+      "TWIN": "Twin",
+      "SUITE": "Suite",
+      "DELUXE": "Deluxe",
+      "KING": "King",
+      "STANDARD": "Standard",
+      "STANDARD_SUITE": "Standard Suite",
+      "JUNIOR_SUITE": "Junior Suite",
+      "EXECUTIVE_SUITE": "Executive Suite",
+      "PRESIDENTIAL_SUITE": "Presidential Suite"
+    },
+    "subCities": {
+      "Debaayyuu": "Debaayyuu",
+      "Chalaleka": "Chalaleka",
+      "Xxulaa": "Xxulaa"
+    },
+    "roomCard": {
+      "perNight": "/ night",
+      "capacity": "{{count}} guests",
+      "floor": "Floor {{floor}}",
+      "viewDetails": "View details",
+      "available": "Available",
+      "unavailable": "Booked"
+    },
+    "detail": {
+      "title": "Room details",
+      "amenities": "Amenities",
+      "description": "Description",
+      "guesthouse": "Guesthouse",
+      "address": "Address",
+      "phone": "Phone",
+      "bookNow": "Request booking",
+      "priceBreakdown": "Price breakdown",
+      "nights": "{{count}} nights",
+      "weekendRate": "Weekend rate applies (Fri + Sat)",
+      "total": "Total",
+      "close": "Close"
+    },
+    "booking": {
+      "title": "Request booking",
+      "dates": "Dates",
+      "nights": "{{count}} nights",
+      "totalCost": "Total cost",
+      "guestNotes": "Message to guesthouse (optional)",
+      "guestNotesPlaceholder": "e.g. I will arrive around 6pm",
+      "submitButton": "Submit booking request",
+      "submitting": "Submitting...",
+      "success": "Booking request submitted!",
+      "successMessage": "The guesthouse will review and confirm your reservation shortly.",
+      "viewMyReservations": "View my reservations",
+      "close": "Close",
+      "needLogin": "Please sign in to book a room",
+      "signInButton": "Sign in with phone"
+    },
+    "auth": {
+      "title": "Sign in",
+      "subtitle": "Enter your phone number to receive a verification code",
+      "phoneLabel": "Phone number",
+      "phonePlaceholder": "+251 9XX XXX XXX",
+      "sendOtp": "Send code",
+      "sending": "Sending...",
+      "otpTitle": "Enter verification code",
+      "otpSubtitle": "We sent a 6-digit code to {{phone}}",
+      "otpLabel": "Verification code",
+      "otpPlaceholder": "123456",
+      "verifyOtp": "Verify",
+      "verifying": "Verifying...",
+      "resendOtp": "Resend code",
+      "nameLabel": "Your name (optional)",
+      "namePlaceholder": "Abebe Kebede",
+      "invalidPhone": "Invalid phone number. Use 7-15 digits with optional + prefix.",
+      "invalidCode": "Invalid verification code. Please try again.",
+      "expiredCode": "Verification code has expired. Please request a new code.",
+      "devOtpNote": "Dev mode: your code is {{otp}}",
+      "back": "Back",
+      "success": "Signed in successfully!"
+    },
+    "reservations": {
+      "title": "My reservations",
+      "empty": "You have no reservations yet. Start by searching for a room!",
+      "searchRooms": "Search rooms",
+      "status": {
+        "UPCOMING": "Pending approval",
+        "ACTIVE": "Confirmed",
+        "COMPLETED": "Completed",
+        "CANCELLED": "Cancelled",
+        "DELETED": "Deleted"
+      },
+      "paymentStatus": {
+        "PAID": "Paid",
+        "PARTIAL": "Partially paid",
+        "PENDING": "Payment pending"
+      },
+      "dates": "Dates",
+      "nights": "{{count}} nights",
+      "total": "Total",
+      "balance": "Balance",
+      "bookedAt": "Booked on {{date}}",
+      "guesthouse": "Guesthouse",
+      "room": "Room",
+      "yourNotes": "Your message"
+    },
+    "nav": {
+      "search": "Search rooms",
+      "reservations": "My reservations",
+      "signIn": "Sign in",
+      "signOut": "Sign out",
+      "language": "Language"
+    },
+    "errors": {
+      "searchFailed": "Failed to search rooms. Please try again.",
+      "bookingFailed": "Failed to submit booking request. Please try again.",
+      "roomUnavailable": "This room is already booked for the selected dates.",
+      "sessionExpired": "Your session has expired. Please sign in again."
+    }
   }
 }

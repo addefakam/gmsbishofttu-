@@ -1890,7 +1890,7 @@
     "btnSelectExisting": "ነባር ይምረጡ",
     "btnRegisterNewGuest": "አዲስ እንግዳ መዝግብ",
     "placeholderSelectGuest": "እንግዳ ይምረጡ",
-    "placeholderSelectRoom": "ነፃ ክፍል ይምረጡ",
+    "placeholderSelectRoom": "ክፍል ይምረጡ",
     "noAvailableRooms": "ምንም ነፃ ክፍሎች የሉም",
     "lblRoom": "ክፍል",
     "etbPerNight": "ብር/ሌሊት",
@@ -1913,8 +1913,6 @@
     "lblidNumber": "የመታወቂያ ቁጥር",
     "lblcheckinDate": "የመግቢያ ቀን",
     "lblcheckoutDate": "የመውጫ ቀን",
-    "lblRoom": "ክፍል",
-    "placeholderSelectRoom": "ክፍል ይምረጡ",
     "toastBulkCheckinAllBlocked": "ሁሉም {{count}} ቀጥሮዎች ታግደዋል፦ {{reason}}",
     "toastBulkCheckinPartialBlocked": "{{count}} ቀጥሮዎች ዞረዋል፦ {{reason}}",
     "toastBulkCheckinPartialFailed": "{{count}} ቀጥሮዎች አልተሳኩም — {{guest}}፦ {{reason}}",
@@ -3652,5 +3650,143 @@
     "saveOps": "የክወና ማዋቀር አስቀምጥ",
     "opsSaved": "የክወና ማዋቀር ተቀምጧል",
     "dropdownLabel": "የድርጅት መገለጫ"
+  },
+  "findApp": {
+    "appName": "ጨብግፍጩ ክፍላብ",
+    "tagline": "በጨግፍጩ ከሰጥ ፡ክጊፍ ፈስርይ ክሰ፣ን ክፍትሪ",
+    "search": {
+      "title": "ክፍላብ ዐቅፍ",
+      "checkIn": "ቀሰግስፈ ቀንቅ",
+      "checkOut": "ቀሰሱጣፈ ቀንቅ",
+      "roomType": "ቀክፍላብ አይፈጥ",
+      "allTypes": "ሁልስ አይፈጥቦፍ",
+      "priceRange": "ቀዋገ ክላላ (ብለ/ሌቀሌፅ)",
+      "minPrice": "ዘቅገፊጥ ዋገ",
+      "maxPrice": "ከውገፊጥ ዋገ",
+      "subCity": "ክፍላከ ከሰስ",
+      "allSubCities": "ሁልስ ክፍላከ ከሰስቦፍ",
+      "searchButton": "ክፍላብቦፍ ዐቅፍ",
+      "clearButton": "ፊዴፐሪብፍው አግፋደ",
+      "results": "{{count}} ክፍላብቦፍ ጀገቅፉሶው",
+      "noResults": "ስንን ክፍላብ አልጀገቋሰሰብሰሰስብሰስ ዐቅዊውጵ ዋፍው",
+      "loading": "ጀገቋቋ ክፍላብቦፍው በሐዘቅፍ ሌዋይ..."
+    },
+    "roomTypes": {
+      "SINGLE": "ነፍገያ",
+      "DOUBLE": "ድለብ",
+      "TWIN": "ግዋዊ",
+      "SUITE": "ሳፅ",
+      "DELUXE": "ዳልክስ",
+      "KING": "ክዊፍ",
+      "STANDARD": "ሐደአንያ",
+      "STANDARD_SUITE": "ሐደአንያ ሳፅ",
+      "JUNIOR_SUITE": "ፍዊዋይ ሳፅ",
+      "EXECUTIVE_SUITE": "ኤክዋይካዋፅ ሳፅ",
+      "PRESIDENTIAL_SUITE": "ውሪቋድዊያ ሳፅ"
+    },
+    "subCities": {
+      "Debaayyuu": "ደብሹይጥ",
+      "Chalaleka": "ፌያያከካ",
+      "Xxulaa": "ሁልያ"
+    },
+    "roomCard": {
+      "perNight": "/ ሌቀሌፅ",
+      "capacity": "{{count}} እንፍቦፍ",
+      "floor": "ፍዋፍ {{floor}}",
+      "viewDetails": "ዙለይ ይ ሐስድቅጥ",
+      "available": "ይገቅዊው",
+      "unavailable": "ጀይሽሰ"
+    },
+    "detail": {
+      "title": "ቀክፍላብ ዙለይቦፍ",
+      "amenities": "ሐገክኈቦቦፍ",
+      "description": "ሐግፈያ",
+      "guesthouse": "እንፍሸ ሹቄፅ",
+      "address": "አድለስያ",
+      "phone": "ስልክ",
+      "bookNow": "ሶስያ ይገያቅው",
+      "priceBreakdown": "ቀዋገ ዙለይ ይ ሐስድቅጥ",
+      "nights": "{{count}} ሌቀሌፅቦፍ",
+      "weekendRate": "ቀሳሐፊፅፍው ቀዋገ ይጀገሶሰያያያ (ዓለረው + ፅይሐቅ)",
+      "total": "ጀይካያ",
+      "close": "ዙገ"
+    },
+    "booking": {
+      "title": "ሶስያ ይገያቅው",
+      "dates": "ቀንቅቦፍ",
+      "nights": "{{count}} ሌቀሌፅቦፍ",
+      "totalCost": "ጀይካያ ዋገ",
+      "guestNotes": "ለእንፍሸ ሹቄፅ ሐስልክካፅ (አማለፍ)",
+      "guestNotesPlaceholder": "ለሐሰገፈያዘ በ 6 ስዋዕ ሌዋይ እደስውሐያ",
+      "submitButton": "ቀሶስያ ይገያቅውው ያጅጅዘቅው",
+      "submitting": "በሐሌክ ሌዋይ...",
+      "success": "ቀሶስያ ይገያቅው ጀያክ!",
+      "successMessage": "እንፍሸ ሹቄፅ ይገያቅውቦፍው በሐገሐገሐፈ ሌዋይ ዊር፣ብሰስ ጀይሶሰያያያያ",
+      "viewMyReservations": "ቀእንውው ሶስያቦፍው ይ ሐስድቅጥ",
+      "close": "ዙገ",
+      "needLogin": "ክፍላብ ለለገይቅው እስያክ ይግዋይ",
+      "signInButton": "በስልክ ይግዋይ"
+    },
+    "auth": {
+      "title": "ይግዋይ",
+      "subtitle": "ቀሐለገገካፈ ክድው ለለገይቅው ያገሰካ ቀስልክው ያዐሰው ለክገዘቅው",
+      "phoneLabel": "ቀስልክ ቁልለለሪ",
+      "phonePlaceholder": "+251 9XX XXX XXX",
+      "sendOtp": "ክድው ያያክ",
+      "sending": "በሐሌክ ሌዋይ...",
+      "otpTitle": "ቀሐለገገካፈ ክድው ያዐሰው አለቅው ያ ሐስቅው",
+      "otpSubtitle": "6 አስዐይን ክድው ዋቀ {{phone}} ልከውቅያ",
+      "otpLabel": "ቀሐለገገካፈ ክድው",
+      "otpPlaceholder": "123456",
+      "verifyOtp": "አስገገካክፋደ",
+      "verifying": "በሐገገካክፋደ ሌዋይ...",
+      "resendOtp": "ክድው እንቅለካ ያያክ",
+      "nameLabel": "ስሐውያ (አማለፍ)",
+      "namePlaceholder": "አሶሶ ከበደ",
+      "invalidPhone": "ዋገ በለሐስፅስሰስ ቀስልክ ቁልለለሪሰ 7-15 አስዐይቦፍው ከ + ጀያይ ይገቅው",
+      "invalidCode": "ዋገ በለሐስፅስሰስ ቀሐለገገካፈ ክድውሰ እንቅለካ ይሰይክፍውያ",
+      "expiredCode": "ቀሐለገገካፈ ክድው ግዋይቦ አልውቦፍሰ አልሳቦ ያሰስስ አያው ክድው ይገያቅው",
+      "devOtpNote": "ልስማፅ ሁንይጵይጵያውሰ ክድውቦፍው {{otp}} ነይ",
+      "back": "ጀሐሐለስ",
+      "success": "በጀሳያካ ሁንይጵያጵያ ግዋፉሶው!"
+    },
+    "reservations": {
+      "title": "ቀእንው ሶስያቦፍ",
+      "empty": "እስካያው ስንን ሶስያ አልቁሰሰውሰ ክፍላብ በሐዘቅፍ ይገዬሐያ!",
+      "searchRooms": "ክፍላብቦፍ ዐቅፍ",
+      "status": {
+        "UPCOMING": "በሐጀገፋይ ሌዋይ",
+        "ACTIVE": "ጀለገገካክፋደሶው",
+        "COMPLETED": "ጀገጉስፈሶው",
+        "CANCELLED": "ጀስለገያሶው",
+        "DELETED": "ጀስለገያሶው"
+      },
+      "paymentStatus": {
+        "PAID": "ጀከውዐሰ",
+        "PARTIAL": "ከፊዴል ጀከውዐሰ",
+        "PENDING": "ክውፋያ በሐጀገፋይ ሌዋይ"
+      },
+      "dates": "ቀንቅቦፍ",
+      "nights": "{{count}} ሌቀሌፅቦፍ",
+      "total": "ጀይካያ",
+      "balance": "ቀሶለ ለሳሳያ",
+      "bookedAt": "በ {{date}} ጀይስዳሶው",
+      "guesthouse": "እንፍሸ ሹቄፅ",
+      "room": "ክፍላብ",
+      "yourNotes": "ቀእለስው ሐስልክካፅ"
+    },
+    "nav": {
+      "search": "ክፍላብቦፍ ዐቅፍ",
+      "reservations": "ቀእንው ሶስያቦፍ",
+      "signIn": "ይግዋይ",
+      "signOut": "ውግድ",
+      "language": "ቁያቅያ"
+    },
+    "errors": {
+      "searchFailed": "ክፍላብቦፍው ዐቅፍ አልጀሳካሰስብሰ እንቅለካ ይሰይክፍውያ",
+      "bookingFailed": "ቀሶስያ ይገያቅው ሐዐጅጅዐው አልጀሳካሰስብሰ እንቅለካ ይሰይክፍውያ",
+      "roomUnavailable": "ይስ ክፍላብ ቀጀሐለቅውቦፍ ቀንቅቦፍ ጀይሽሶው",
+      "sessionExpired": "ግዋይቦው አልውቦፍሰ አልሳቦያ እንቅለካ ይግዋይ"
+    }
   }
 }

@@ -1,0 +1,42 @@
+{
+  "name": "Bishoftu Rooms — Guest Room Finder",
+  "short_name": "Bishoftu Rooms",
+  "description": "Find and book guesthouse rooms in Bishoftu city",
+  "start_url": "/find",
+  "scope": "/find",
+  "display": "standalone",
+  "background_color": "#f0f9ff",
+  "theme_color": "#0ea5e9",
+  "orientation": "portrait",
+  "categories": ["travel", "hospitality"],
+  "lang": "am",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/find-app/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/find-app/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Search Rooms",
+      "short_name": "Search",
+      "url": "/find",
+      "icons": [{ "src": "/find-app/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "My Reservations",
+      "short_name": "My Bookings",
+      "url": "/find?tab=reservations",
+      "icons": [{ "src": "/find-app/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
