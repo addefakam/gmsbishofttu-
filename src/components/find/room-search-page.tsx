@@ -335,8 +335,10 @@ function SearchTab({ t, guest, onLoginRequired }: {
   guest: GuestUser | null;
   onLoginRequired: () => void;
 }) {
-  const [checkIn, setCheckIn] = useState(todayStr(1));
-  const [checkOut, setCheckOut] = useState(todayStr(2));
+  // Dates start empty — landing shows ALL rooms from ALL providers.
+  // Guest can pick dates to filter by availability.
+  const [checkIn, setCheckIn] = useState("");
+  const [checkOut, setCheckOut] = useState("");
   const [roomType, setRoomType] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
@@ -475,12 +477,29 @@ function SearchTab({ t, guest, onLoginRequired }: {
         </div>
       )}
 
-      {/* Results */}
+      {/* Results header */}
       <div className="mb-3 flex items-center justify-between">
-        <p className="text-xs text-slate-500">
-          {loading ? t("search.loading") : t("search.results", { count: rooms.length })}
-        </p>
+        <div>
+          <h2 className="text-sm font-bold text-slate-900">
+            {checkIn && checkOut ? t("search.title") : "All rooms in Bishoftu"}
+          </h2>
+          <p className="text-xs text-slate-500">
+            {loading ? t("search.loading") : t("search.results", { count: rooms.length })}
+          </p>
+        </div>
+        {!checkIn && !checkOut && (
+          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+            All guesthouses
+          </span>
+        )}
       </div>
+
+      {/* Hint to pick dates for availability filtering */}
+      {!checkIn && !checkOut && !loading && rooms.length > 0 && (
+        <div className="mb-3 rounded-xl bg-sky-50 px-3 py-2 text-[11px] text-sky-800 border border-sky-100">
+          💡 Pick check-in + check-out dates above to see only rooms available for your stay.
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-3">
