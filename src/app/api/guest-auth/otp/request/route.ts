@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
 
     if (smsGateway === "twilio" && process.env.TWILIO_ACCOUNT_SID) {
       // TODO: Integrate Twilio
-      // await twilio.messages.create({ to: phone, from: ..., body: `Your Bishoftu Rooms OTP is ${otpCode}` })
+      // await twilio.messages.create({ to: phone, from: ..., body: `Your Bishoftu Bed Service OTP is ${otpCode}` })
     } else if (smsGateway === "telegram" && process.env.TELEGRAM_BOT_TOKEN) {
       // TODO: Send via Telegram bot
     }

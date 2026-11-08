@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
         balance: totalCost,
         paymentStatus: "PENDING",
         status: "UPCOMING", // PENDING until provider approves
-        notes: guestNotes || "Booked via Bishoftu Rooms app",
+        notes: guestNotes || "Booked via Bishoftu Bed Service app",
         providerId: room.providerId,
       },
       select: {

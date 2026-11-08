@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from "next";
 import "@/i18n/config";
 
 export const metadata: Metadata = {
-  title: "Bishoftu Rooms — Guest Room Finder",
+  title: "Bishoftu Bed Service — Guest Room Finder",
   description: "Find and book guesthouse rooms in Bishoftu city. Browse available rooms, compare prices, and request bookings from approved guesthouses.",
-  applicationName: "Bishoftu Rooms",
+  applicationName: "Bishoftu Bed Service",
   manifest: "/find-app/manifest.json",
   appleWebApp: {
     capable: true,
-    title: "Bishoftu Rooms",
+    title: "Bishoftu Bed Service",
     statusBarStyle: "black-translucent",
   },
   icons: {
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     apple: [{ url: "/find-app/icon-192.png", sizes: "192x192" }],
   },
   openGraph: {
-    title: "Bishoftu Rooms — Guest Room Finder",
+    title: "Bishoftu Bed Service — Guest Room Finder",
     description: "Find and book guesthouse rooms in Bishoftu city.",
     type: "website",
     locale: "am_ET",

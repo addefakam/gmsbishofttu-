@@ -1185,7 +1185,7 @@ function ReservationCard({ reservation: r, t }: {
 
       <p className="mt-2 text-[10px] text-slate-400">{t("reservations.bookedAt", { date: bookedDate })}</p>
 
-      {r.notes && r.notes !== "Booked via Bishoftu Rooms app" && (
+      {r.notes && r.notes !== "Booked via Bishoftu Bed Service app" && (
         <div className="mt-2 rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600">
           <p className="font-medium text-slate-700">{t("reservations.yourNotes")}:</p>
           <p>{r.notes}</p>

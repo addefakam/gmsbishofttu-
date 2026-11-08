@@ -3759,7 +3759,7 @@
     "dropdownLabel": "Organization Profile"
   },
   "findApp": {
-    "appName": "Bishoftu Rooms",
+    "appName": "Bishoftu Bed Service",
     "tagline": "Find your perfect guesthouse room in Bishoftu",
     "search": {
       "title": "Find a Room",
@@ -3896,15 +3896,15 @@
       "sessionExpired": "Your session has expired. Please sign in again."
     },
     "install": {
-      "title": "Install Bishoftu Rooms",
+      "title": "Install Bishoftu Bed Service",
       "desc": "Add to your home screen for faster access",
       "button": "Install app",
       "later": "Not now",
-      "menuHint": "Tap 'Install app' to add Bishoftu Rooms to your home screen.",
+      "menuHint": "Tap 'Install app' to add Bishoftu Bed Service to your home screen.",
       "iosHint": "Tap the Share button, then 'Add to Home Screen'.",
       "androidHint": "Tap the menu (⋮), then 'Install app' or 'Add to Home screen'.",
       "desktopHint": "Tap the install icon (⊕) in the address bar.",
-      "success": "Installed! Find Bishoftu Rooms on your home screen."
+      "success": "Installed! Find Bishoftu Bed Service on your home screen."
     }
   }
 }

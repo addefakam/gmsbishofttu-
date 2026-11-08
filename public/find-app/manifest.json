@@ -1,6 +1,6 @@
 {
-  "name": "Bishoftu Rooms — Guest Room Finder",
-  "short_name": "Bishoftu Rooms",
+  "name": "Bishoftu Bed Service — Guest Room Finder",
+  "short_name": "Bishoftu Bed Service",
   "description": "Find and book guesthouse rooms in Bishoftu city",
   "start_url": "/find",
   "scope": "/find",
