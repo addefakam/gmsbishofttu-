@@ -26,11 +26,12 @@ import {
   Plus,
   Trash2,
   GripVertical,
+  MapPin,
 } from "lucide-react";
 
 // ── Types ──
 
-type TabKey = "general" | "guesthouse" | "security" | "notifications" | "payment" | "emergency";
+type TabKey = "general" | "guesthouse" | "security" | "notifications" | "payment" | "emergency" | "divisions";
 
 interface GeneralSettings {
   systemName: string;
@@ -183,6 +184,7 @@ const TABS: Array<{
   { key: "notifications", label: "Notifications", icon: Bell },
   { key: "payment", label: "Payment & Billing", icon: CreditCard },
   { key: "emergency", label: "Emergency Contacts", icon: Siren },
+  { key: "divisions", label: "Sub-Cities & Woredas", icon: MapPin },
 ];
 
 // ── Shared UI Components ──
@@ -1503,6 +1505,232 @@ function EmergencyTab() {
   );
 }
 
+// ── Divisions Tab (Sub-Cities & Woredas) ──
+
+interface SubCityDivision {
+  name: string;
+  woredas: string[];
+}
+
+function DivisionsTab() {
+  const [divisions, setDivisions] = useState<SubCityDivision[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/divisions", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        setDivisions(Array.isArray(data.divisions) ? data.divisions : []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const save = () => {
+    setSaving(true);
+    fetch("/api/admin/divisions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ divisions }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.divisions) setDivisions(data.divisions);
+        toast.success("Divisions saved — visible on all apps within 5 minutes");
+      })
+      .catch(() => toast.error("Failed to save divisions"))
+      .finally(() => setSaving(false));
+  };
+
+  const updateSubCityName = (idx: number, name: string) => {
+    setDivisions((prev) => prev.map((d, i) => (i === idx ? { ...d, name } : d)));
+  };
+
+  const addWoreda = (subCityIdx: number) => {
+    setDivisions((prev) =>
+      prev.map((d, i) =>
+        i === subCityIdx ? { ...d, woredas: [...d.woredas, ""] } : d
+      )
+    );
+  };
+
+  const updateWoreda = (subCityIdx: number, woredaIdx: number, value: string) => {
+    setDivisions((prev) =>
+      prev.map((d, i) =>
+        i === subCityIdx
+          ? { ...d, woredas: d.woredas.map((w, j) => (j === woredaIdx ? value : w)) }
+          : d
+      )
+    );
+  };
+
+  const removeWoreda = (subCityIdx: number, woredaIdx: number) => {
+    setDivisions((prev) =>
+      prev.map((d, i) =>
+        i === subCityIdx
+          ? { ...d, woredas: d.woredas.filter((_, j) => j !== woredaIdx) }
+          : d
+      )
+    );
+  };
+
+  const addSubCity = () => {
+    setDivisions((prev) => [...prev, { name: "New Sub-City", woredas: [] }]);
+  };
+
+  const removeSubCity = (idx: number) => {
+    setDivisions((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionCard
+        icon={MapPin}
+        title="Bishoftu Sub-Cities & Woredas"
+        description="Configure the administrative divisions (sub-cities and their woredas) used across the system — provider registration, police jurisdiction, /find app filters, and mobile app login. Changes are visible within 5 minutes."
+      >
+        <div className="space-y-3">
+          {divisions.length === 0 && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+              No sub-cities configured. The system will use hardcoded defaults (Debaayyuu, Chalaleka, Dukem).
+            </div>
+          )}
+
+          {divisions.map((subCity, subIdx) => (
+            <div
+              key={subIdx}
+              className="rounded-xl border border-slate-200 bg-slate-50/50 p-3"
+            >
+              {/* Sub-city header */}
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="h-4 w-4 text-sky-600" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Sub-City #{subIdx + 1}
+                  </span>
+                </div>
+                <button
+                  onClick={() => removeSubCity(subIdx)}
+                  className="rounded p-1 text-red-400 hover:bg-red-100 hover:text-red-700"
+                  title="Remove sub-city"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {/* Sub-city name */}
+              <div className="mb-3">
+                <label className="mb-0.5 block text-[10px] font-medium text-slate-600">Sub-city name</label>
+                <input
+                  type="text"
+                  value={subCity.name}
+                  onChange={(e) => updateSubCityName(subIdx, e.target.value)}
+                  placeholder="e.g. Debaayyuu"
+                  className={inputClass + " text-xs"}
+                  dir="auto"
+                />
+              </div>
+
+              {/* Woredas list */}
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-[10px] font-medium text-slate-600">
+                    Woredas ({subCity.woredas.length})
+                  </label>
+                  <button
+                    onClick={() => addWoreda(subIdx)}
+                    className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-200 hover:bg-sky-100"
+                  >
+                    <Plus className="h-2.5 w-2.5" />
+                    Add woreda
+                  </button>
+                </div>
+
+                {subCity.woredas.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 italic">No woredas — click "Add woreda" to add one.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {subCity.woredas.map((woreda, woredaIdx) => (
+                      <div key={woredaIdx} className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={woreda}
+                          onChange={(e) => updateWoreda(subIdx, woredaIdx, e.target.value)}
+                          placeholder={`Woreda ${woredaIdx + 1}`}
+                          className={inputClass + " text-xs flex-1"}
+                          dir="auto"
+                        />
+                        <button
+                          onClick={() => removeWoreda(subIdx, woredaIdx)}
+                          className="rounded p-1 text-red-400 hover:bg-red-100 hover:text-red-700"
+                          title="Remove woreda"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Add + Save buttons */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <button
+            onClick={addSubCity}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add new sub-city
+          </button>
+
+          <button
+            onClick={save}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Save divisions
+          </button>
+        </div>
+      </SectionCard>
+
+      {/* Info note */}
+      <div className="flex items-start gap-2 rounded-lg bg-sky-50 px-3 py-2 text-[11px] text-sky-900 ring-1 ring-sky-200">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-600" />
+        <div>
+          <p className="font-semibold">Where do these divisions appear?</p>
+          <p className="mt-0.5">
+            These sub-cities + woredas are used in:
+          </p>
+          <ul className="mt-1 ml-3 list-disc space-y-0.5">
+            <li>Provider registration form (sub-city + woreda dropdowns)</li>
+            <li>Police account creation (jurisdiction selection)</li>
+            <li>/find app — sub-city filter</li>
+            <li>Mobile app login (jurisdiction selection)</li>
+            <li>Police API routes (jurisdiction-based filtering)</li>
+          </ul>
+          <p className="mt-1.5">
+            Changes are cached client-side for 5 minutes, so they appear in
+            all apps within 5 minutes of saving.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page Component ──
 
 export default function SuperSystemConfigPage() {
@@ -1825,6 +2053,7 @@ export default function SuperSystemConfigPage() {
             />
           )}
           {activeTab === "emergency" && <EmergencyTab />}
+          {activeTab === "divisions" && <DivisionsTab />}
         </div>
       )}
     </div>
