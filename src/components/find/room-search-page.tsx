@@ -460,29 +460,53 @@ function SearchTab({ t, guest, onLoginRequired }: {
         </div>
       )}
 
-      {/* Results header */}
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-bold text-slate-900">All guesthouses in Bishoftu</h2>
-          <p className="text-xs text-slate-500">
-            {loading ? t("search.loading") : (
-              <>
-                <span className="font-semibold text-slate-700">{providers.length}</span> guesthouses
-                {" · "}
-                <span className="font-semibold text-slate-700">{totalRooms}</span> rooms
-              </>
-            )}
-          </p>
+      {/* Results header — artistic gradient banner */}
+      <div className="mb-4 overflow-hidden rounded-2xl bg-gradient-to-br from-sky-600 via-sky-700 to-cyan-700 p-4 text-white shadow-lg shadow-sky-600/20">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="flex items-center gap-1.5 text-base font-bold">
+              <Building className="h-4 w-4 shrink-0" />
+              <span className="truncate">All guesthouses in Bishoftu</span>
+            </h2>
+            <p className="mt-1 text-[11px] text-sky-100">
+              {loading ? (
+                <span className="inline-flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {t("search.loading")}
+                </span>
+              ) : (
+                <>
+                  <span className="font-bold text-white">{providers.length}</span> guesthouses
+                  <span className="mx-1.5 text-sky-300">•</span>
+                  <span className="font-bold text-white">{totalRooms}</span> rooms
+                </>
+              )}
+            </p>
+          </div>
+          {!loading && providers.length > 0 && (
+            <div className="shrink-0 text-right">
+              <div className="text-2xl font-extrabold leading-none">{providers.length}</div>
+              <div className="text-[9px] uppercase tracking-wider text-sky-200">listed</div>
+            </div>
+          )}
         </div>
-        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-          {providers.length} listed
-        </span>
+        {/* Decorative wave at the bottom */}
+        <svg
+          className="mt-2 h-1.5 w-full text-sky-300/30"
+          viewBox="0 0 100 4"
+          preserveAspectRatio="none"
+        >
+          <path d="M0,2 Q25,0 50,2 T100,2" stroke="currentColor" strokeWidth="0.5" fill="none" />
+        </svg>
       </div>
 
       {/* Hint — let guest know dates are picked at booking time */}
       {!loading && providers.length > 0 && (
-        <div className="mb-3 rounded-xl bg-sky-50 px-3 py-2 text-[11px] text-sky-800 border border-sky-100">
-          💡 Tap any room to see details and request a booking. You'll pick check-in + check-out dates when booking.
+        <div className="mb-3 flex items-start gap-2 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 px-3 py-2 text-[11px] text-amber-900 ring-1 ring-amber-200/60">
+          <span className="shrink-0 text-base leading-none">💡</span>
+          <span>
+            Tap a guesthouse below to see its rooms. Pick check-in + check-out dates when booking.
+          </span>
         </div>
       )}
 
@@ -533,75 +557,174 @@ function ProviderSection({ provider, t, onSelectRoom }: {
   onSelectRoom: (room: Room) => void;
 }) {
   const availableCount = provider.rooms.filter(r => r.available).length;
-  // Collapsed by default — guest taps the provider header to expand
-  // and see the rooms underneath.
+  const allAvailable = availableCount === provider.rooms.length;
+  const someBooked = availableCount < provider.rooms.length;
+  // Collapsed by default — guest taps the provider header to expand.
   const [collapsed, setCollapsed] = useState(true);
 
+  // Generate a deterministic gradient pair based on provider id — gives
+  // each guesthouse its own "color identity" while staying on-brand.
+  const gradients = [
+    "from-sky-500 via-sky-600 to-cyan-600",
+    "from-indigo-500 via-indigo-600 to-violet-600",
+    "from-emerald-500 via-emerald-600 to-teal-600",
+    "from-amber-500 via-orange-500 to-rose-500",
+    "from-fuchsia-500 via-purple-500 to-indigo-600",
+    "from-cyan-500 via-blue-500 to-indigo-600",
+    "from-rose-500 via-pink-500 to-fuchsia-600",
+    "from-lime-500 via-emerald-500 to-teal-600",
+  ];
+  const gradientIdx = provider.id
+    .split("")
+    .reduce((acc, c) => acc + c.charCodeAt(0), 0) % gradients.length;
+  const gradient = gradients[gradientIdx];
+
+  // First letter of name for the avatar bubble.
+  const initial = (provider.name || "?").trim().charAt(0).toUpperCase();
+
   return (
-    <div className="rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden">
+    <div
+      className="group relative overflow-hidden rounded-3xl bg-white shadow-[0_2px_12px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/60 transition-all duration-300 hover:shadow-[0_12px_32px_rgba(14,165,233,0.18)] hover:ring-sky-300/60"
+      style={{ borderRadius: 24 }}
+    >
+      {/* Decorative top accent — colored bar that signals "tap me" */}
+      <div className={`h-1.5 w-full bg-gradient-to-r ${gradient}`} />
+
       {/* Provider header — tap to expand/collapse */}
       <div
-        className="flex items-start gap-3 p-3 bg-gradient-to-r from-sky-50 to-cyan-50 cursor-pointer select-none"
+        className="relative cursor-pointer select-none p-4 transition-colors"
         onClick={() => setCollapsed(!collapsed)}
       >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white">
-          <Building className="h-5 w-5" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-bold text-slate-900 truncate">{provider.name}</h3>
-          <div className="flex items-center gap-1 text-[11px] text-slate-600 mt-0.5">
-            <MapPin className="h-3 w-3 shrink-0" />
-            <span className="truncate">
-              {provider.address || "Bishoftu"}
-              {provider.subCity && ` · ${t(`subCities.${provider.subCity}`, { defaultValue: provider.subCity })}`}
-            </span>
+        {/* Soft glow background on hover */}
+        <div
+          className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 transition-opacity duration-300 group-hover:opacity-[0.04]`}
+        />
+
+        <div className="relative flex items-start gap-3.5">
+          {/* Avatar bubble with gradient + initial letter */}
+          <div className="relative shrink-0">
+            <div
+              className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${gradient} text-base font-extrabold text-white shadow-lg shadow-slate-900/10 ring-2 ring-white`}
+            >
+              {initial}
+            </div>
+            {/* Availability dot — green when all available, amber when some booked */}
+            <span
+              className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white shadow-sm ${
+                allAvailable ? "bg-emerald-500" : someBooked ? "bg-amber-500" : "bg-slate-400"
+              }`}
+              title={
+                allAvailable ? "All rooms available" :
+                someBooked ? `${availableCount} of ${provider.rooms.length} available` :
+                "No rooms available"
+              }
+            />
           </div>
-          <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500">
-            <span className="flex items-center gap-0.5">
-              <Bed className="h-3 w-3" />
-              <span className="font-semibold text-slate-700">{provider.rooms.length}</span> rooms
-            </span>
-            {availableCount < provider.rooms.length ? (
-              <span className="text-emerald-600 font-semibold">{availableCount} available</span>
-            ) : (
-              <span className="text-emerald-600 font-semibold">All available</span>
-            )}
-            <span className="text-slate-400">·</span>
-            <span className="text-slate-500">
-              {collapsed ? "Tap to view rooms" : "Tap to hide"}
-            </span>
+
+          {/* Name + address + meta */}
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-[15px] font-bold leading-tight text-slate-900">
+              {provider.name}
+            </h3>
+
+            {/* Address line with sub-city chip */}
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="flex items-center gap-0.5 text-slate-600">
+                <MapPin className="h-3 w-3 shrink-0 text-slate-400" />
+                <span className="truncate max-w-[140px]">
+                  {provider.address || "Bishoftu"}
+                </span>
+              </span>
+              {provider.subCity && (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                  {t(`subCities.${provider.subCity}`, { defaultValue: provider.subCity })}
+                </span>
+              )}
+            </div>
+
+            {/* Stats row: rooms + availability + tap hint */}
+            <div className="mt-2 flex items-center gap-2 text-[10px]">
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
+                <Bed className="h-2.5 w-2.5" />
+                {provider.rooms.length} rooms
+              </span>
+              {allAvailable ? (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  All available
+                </span>
+              ) : someBooked ? (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-700 ring-1 ring-amber-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  {availableCount} available
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-red-50 px-2 py-0.5 font-semibold text-red-700 ring-1 ring-red-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                  Fully booked
+                </span>
+              )}
+            </div>
+
+            {/* Tap hint — appears subtly, bold on hover */}
+            <p className="mt-2 text-[10px] font-medium text-slate-400 transition-colors group-hover:text-sky-600">
+              {collapsed ? "▸ Tap to view rooms" : "▴ Tap to hide"}
+            </p>
           </div>
-        </div>
-        <a
-          href={`tel:${provider.phone}`}
-          onClick={(e) => e.stopPropagation()}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-sky-600 shadow-sm border border-sky-200 hover:bg-sky-50"
-          title={`Call ${provider.phone}`}
-        >
-          <Phone className="h-4 w-4" />
-        </a>
-        <div className="flex h-9 w-7 shrink-0 items-center justify-center text-slate-400">
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+
+          {/* Right column: call button + chevron */}
+          <div className="flex shrink-0 flex-col items-center gap-2">
+            <a
+              href={`tel:${provider.phone}`}
+              onClick={(e) => e.stopPropagation()}
+              className="group/call flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/30 transition-all hover:scale-105 hover:shadow-lg active:scale-95"
+              title={`Call ${provider.phone}`}
+              aria-label={`Call ${provider.phone}`}
+            >
+              <Phone className="h-4 w-4" />
+            </a>
+            <div
+              className={`flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-all duration-300 group-hover:bg-sky-100 group-hover:text-sky-600 ${
+                collapsed ? "" : "rotate-90"
+              }`}
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Rooms list (under this provider) — shown only when expanded */}
       {!collapsed && (
-        <div className="divide-y divide-slate-100 animate-[fadeIn_0.15s_ease-out]">
-          {provider.rooms.map((room) => (
-            <RoomCard
-              key={room.id}
-              room={room}
-              t={t}
-              onViewDetails={() => onSelectRoom(room)}
-            />
-          ))}
+        <div
+          className="border-t border-dashed border-slate-200 bg-gradient-to-b from-slate-50/50 to-white"
+          style={{
+            animation: "ghms-provider-expand 220ms cubic-bezier(0.16, 1, 0.3, 1)",
+          }}
+        >
+          {/* Small "Rooms" subheader */}
+          <div className="px-4 pt-3 pb-1">
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+              {provider.rooms.length} {provider.rooms.length === 1 ? "Room" : "Rooms"} Available
+            </p>
+          </div>
+          <div className="divide-y divide-slate-100/80">
+            {provider.rooms.map((room) => (
+              <RoomCard
+                key={room.id}
+                room={room}
+                t={t}
+                onViewDetails={() => onSelectRoom(room)}
+              />
+            ))}
+          </div>
         </div>
       )}
+
       <style jsx>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-4px); }
-          to { opacity: 1; transform: translateY(0); }
+        @keyframes ghms-provider-expand {
+          0% { opacity: 0; transform: translateY(-8px); max-height: 0; }
+          100% { opacity: 1; transform: translateY(0); max-height: 5000px; }
         }
       `}</style>
     </div>
@@ -615,60 +738,83 @@ function RoomCard({ room, t, onViewDetails }: {
   onViewDetails: () => void;
 }) {
   const priceDisplay = new Intl.NumberFormat("en-US").format(room.pricePerNight);
+  const roomTypeLabel = t(`roomTypes.${room.type}`, { defaultValue: room.type });
 
   return (
     <div
       onClick={onViewDetails}
-      className="group cursor-pointer flex items-center gap-3 p-3 hover:bg-sky-50/50 transition"
+      className="group/room relative cursor-pointer px-4 py-3 transition-all duration-200 hover:bg-gradient-to-r hover:from-sky-50/80 hover:to-transparent"
     >
-      {/* Image / placeholder */}
-      <div className="relative h-16 w-16 shrink-0 rounded-lg overflow-hidden bg-gradient-to-br from-sky-100 to-cyan-100">
-        {room.image ? (
-          <img src={room.image} alt={room.name} className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <Bed className="h-6 w-6 text-sky-400" />
-          </div>
-        )}
-        {!room.available && (
-          <span className="absolute inset-0 flex items-center justify-center bg-black/40">
-            <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
-              {t("roomCard.unavailable")}
+      <div className="flex items-center gap-3">
+        {/* Image / placeholder — with shimmer effect on hover */}
+        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl shadow-sm ring-1 ring-slate-200/80">
+          {room.image ? (
+            <img
+              src={room.image}
+              alt={room.name}
+              className="h-full w-full object-cover transition-transform duration-300 group-hover/room:scale-110"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-sky-100 via-cyan-50 to-sky-100">
+              <Bed className="h-5 w-5 text-sky-400" />
+            </div>
+          )}
+          {/* Availability ribbon — top-left corner */}
+          {room.available ? (
+            <span className="absolute top-0 left-0 rounded-br-lg bg-emerald-500/90 px-1.5 py-0.5 text-[8px] font-bold text-white shadow-sm backdrop-blur">
+              ✓
             </span>
-          </span>
-        )}
-      </div>
+          ) : (
+            <span className="absolute top-0 left-0 rounded-br-lg bg-red-500/90 px-1.5 py-0.5 text-[8px] font-bold text-white shadow-sm backdrop-blur">
+              ✕
+            </span>
+          )}
+        </div>
 
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h4 className="truncate text-sm font-semibold text-slate-900">{room.name}</h4>
-            <p className="text-[11px] text-slate-500">
-              {t(`roomTypes.${room.type}`, { defaultValue: room.type })}
-              {" · "}
-              {t("roomCard.floor", { floor: room.floor })}
-            </p>
+        {/* Info */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <h4 className="truncate text-[13px] font-semibold text-slate-900 group-hover/room:text-sky-700 transition-colors">
+              {room.name}
+            </h4>
+            <div className="shrink-0 text-right">
+              <span className="text-[13px] font-bold text-sky-600">
+                {priceDisplay}
+              </span>
+              <span className="ml-0.5 text-[9px] text-slate-400">/night</span>
+            </div>
           </div>
-          <div className="shrink-0 text-right">
-            <div className="text-sm font-bold text-sky-600">{priceDisplay}</div>
-            <div className="text-[10px] text-slate-400">{t("roomCard.perNight")}</div>
+
+          <p className="mt-0.5 text-[10px] text-slate-500">
+            <span className="font-medium text-slate-600">{roomTypeLabel}</span>
+            <span className="mx-1 text-slate-300">•</span>
+            {t("roomCard.floor", { floor: room.floor })}
+          </p>
+
+          {/* Capacity + amenities chips */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[9px]">
+            <span className="inline-flex items-center gap-0.5 rounded-md bg-slate-100 px-1.5 py-0.5 font-medium text-slate-600">
+              <Users className="h-2.5 w-2.5" />
+              {t("roomCard.capacity", { count: room.capacity })}
+            </span>
+            {room.amenitiesList.slice(0, 2).map((a, i) => (
+              <span
+                key={i}
+                className="rounded-md bg-sky-50 px-1.5 py-0.5 font-medium text-sky-700 ring-1 ring-sky-100"
+              >
+                {a}
+              </span>
+            ))}
           </div>
         </div>
 
-        {/* Capacity + amenities */}
-        <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-500">
-          <span className="flex items-center gap-0.5">
-            <Users className="h-3 w-3" />
-            {t("roomCard.capacity", { count: room.capacity })}
-          </span>
-          {room.amenitiesList.slice(0, 2).map((a, i) => (
-            <span key={i} className="rounded bg-slate-100 px-1.5 py-0.5">{a}</span>
-          ))}
+        {/* Chevron — slides right on hover */}
+        <div className="flex shrink-0 items-center pr-1">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full text-slate-300 transition-all duration-200 group-hover/room:bg-sky-100 group-hover/room:text-sky-600 group-hover/room:translate-x-0.5">
+            <ChevronRight className="h-3.5 w-3.5" />
+          </div>
         </div>
       </div>
-
-      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-sky-500" />
     </div>
   );
 }
