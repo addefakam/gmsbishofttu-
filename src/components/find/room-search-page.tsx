@@ -335,15 +335,14 @@ function SearchTab({ t, guest, onLoginRequired }: {
   guest: GuestUser | null;
   onLoginRequired: () => void;
 }) {
-  // Dates start empty — landing shows ALL rooms from ALL providers.
-  // Guest can pick dates to filter by availability.
+  // No date filtering on search tab — guests browse all rooms.
+  // Dates are picked only when requesting a booking (in the room detail sheet).
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
   const [roomType, setRoomType] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [subCity, setSubCity] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(false);
@@ -354,8 +353,8 @@ function SearchTab({ t, guest, onLoginRequired }: {
     setLoading(true); setError("");
     try {
       const params = new URLSearchParams();
-      if (checkIn) params.set("checkIn", checkIn);
-      if (checkOut) params.set("checkOut", checkOut);
+      // Note: checkIn/checkOut NOT sent — search tab doesn't filter by date.
+      // Availability filtering happens in the room detail sheet when booking.
       if (roomType) params.set("roomType", roomType);
       if (minPrice) params.set("minPrice", minPrice);
       if (maxPrice) params.set("maxPrice", maxPrice);
@@ -366,48 +365,26 @@ function SearchTab({ t, guest, onLoginRequired }: {
       setError(t("errors.searchFailed"));
       setRooms([]);
     } finally { setLoading(false); }
-  }, [checkIn, checkOut, roomType, minPrice, maxPrice, subCity, t]);
+  }, [roomType, minPrice, maxPrice, subCity, t]);
 
   // Auto-search on mount
   useEffect(() => { search(); /* eslint-disable-next-line */ }, []);
 
   return (
     <div>
-      {/* Search bar */}
+      {/* Search bar — no check-in/check-out dates, only filters */}
       <div className="mb-4 rounded-2xl bg-white p-3 shadow-sm border border-slate-100">
-        <div className="grid grid-cols-2 gap-2">
+        {/* Filters row (always visible now — no toggle needed since they're compact) */}
+        <div className="space-y-2">
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-slate-600">{t("search.checkIn")}</label>
-            <input
-              type="date"
-              value={checkIn}
-              onChange={(e) => setCheckIn(e.target.value)}
+            <label className="mb-1 block text-[11px] font-medium text-slate-600">{t("search.roomType")}</label>
+            <select
+              value={roomType}
+              onChange={(e) => setRoomType(e.target.value)}
               className="h-10 w-full rounded-lg border border-slate-200 px-2 text-sm outline-none focus:border-sky-500"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-slate-600">{t("search.checkOut")}</label>
-            <input
-              type="date"
-              value={checkOut}
-              min={checkIn}
-              onChange={(e) => setCheckOut(e.target.value)}
-              className="h-10 w-full rounded-lg border border-slate-200 px-2 text-sm outline-none focus:border-sky-500"
-            />
-          </div>
-        </div>
-
-        {showFilters && (
-          <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
-            <div>
-              <label className="mb-1 block text-[11px] font-medium text-slate-600">{t("search.roomType")}</label>
-              <select
-                value={roomType}
-                onChange={(e) => setRoomType(e.target.value)}
-                className="h-10 w-full rounded-lg border border-slate-200 px-2 text-sm outline-none focus:border-sky-500"
-              >
-                <option value="">{t("search.allTypes")}</option>
-                {ROOM_TYPES.map((rt) => (
+            >
+              <option value="">{t("search.allTypes")}</option>
+              {ROOM_TYPES.map((rt) => (
                   <option key={rt} value={rt}>{t(`roomTypes.${rt}`)}</option>
                 ))}
               </select>
@@ -448,7 +425,6 @@ function SearchTab({ t, guest, onLoginRequired }: {
               </select>
             </div>
           </div>
-        )}
 
         <div className="mt-3 flex gap-2">
           <button
@@ -458,14 +434,6 @@ function SearchTab({ t, guest, onLoginRequired }: {
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             {t("search.searchButton")}
-          </button>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${
-              showFilters ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-600"
-            }`}
-          >
-            <Filter className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -480,24 +448,20 @@ function SearchTab({ t, guest, onLoginRequired }: {
       {/* Results header */}
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-bold text-slate-900">
-            {checkIn && checkOut ? t("search.title") : "All rooms in Bishoftu"}
-          </h2>
+          <h2 className="text-sm font-bold text-slate-900">All rooms in Bishoftu</h2>
           <p className="text-xs text-slate-500">
             {loading ? t("search.loading") : t("search.results", { count: rooms.length })}
           </p>
         </div>
-        {!checkIn && !checkOut && (
-          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-            All guesthouses
-          </span>
-        )}
+        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+          All guesthouses
+        </span>
       </div>
 
-      {/* Hint to pick dates for availability filtering */}
-      {!checkIn && !checkOut && !loading && rooms.length > 0 && (
+      {/* Hint — let guest know dates are picked at booking time */}
+      {!loading && rooms.length > 0 && (
         <div className="mb-3 rounded-xl bg-sky-50 px-3 py-2 text-[11px] text-sky-800 border border-sky-100">
-          💡 Pick check-in + check-out dates above to see only rooms available for your stay.
+          💡 Tap any room to see details and request a booking. You'll pick check-in + check-out dates when booking.
         </div>
       )}
 
@@ -520,13 +484,11 @@ function SearchTab({ t, guest, onLoginRequired }: {
         </div>
       )}
 
-      {/* Room detail sheet */}
+      {/* Room detail sheet — picks its own dates inside */}
       {selectedRoom && (
         <RoomDetailSheet
           room={selectedRoom}
           t={t}
-          checkIn={checkIn}
-          checkOut={checkOut}
           guest={guest}
           onClose={() => setSelectedRoom(null)}
           onLoginRequired={onLoginRequired}
@@ -616,16 +578,18 @@ function RoomCard({ room, t, onViewDetails }: {
 }
 
 // ── Room Detail Sheet ────────────────────────────────────────────────
-function RoomDetailSheet({ room, t, checkIn, checkOut, guest, onClose, onLoginRequired, onBooked }: {
+function RoomDetailSheet({ room, t, guest, onClose, onLoginRequired, onBooked }: {
   room: Room;
   t: (key: string, opts?: any) => string;
-  checkIn: string;
-  checkOut: string;
   guest: GuestUser | null;
   onClose: () => void;
   onLoginRequired: () => void;
   onBooked: () => void;
 }) {
+  // Dates are picked INSIDE the detail sheet (not on the search tab).
+  // Default: tomorrow → day after tomorrow (1 night).
+  const [checkIn, setCheckIn] = useState(todayStr(1));
+  const [checkOut, setCheckOut] = useState(todayStr(2));
   const [booking, setBooking] = useState(false);
   const [guestNotes, setGuestNotes] = useState("");
   const [success, setSuccess] = useState(false);
@@ -743,9 +707,41 @@ function RoomDetailSheet({ room, t, checkIn, checkOut, guest, onClose, onLoginRe
               {/* Booking box */}
               <div className="rounded-xl border border-slate-200 p-3">
                 <h3 className="mb-2 text-sm font-bold text-slate-900">{t("booking.title")}</h3>
+
+                {/* Date pickers — guest picks check-in + check-out here */}
+                <div className="mb-2 grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-slate-600">{t("search.checkIn")}</label>
+                    <input
+                      type="date"
+                      value={checkIn}
+                      min={todayStr(0)}
+                      onChange={(e) => {
+                        setCheckIn(e.target.value);
+                        // Auto-fix check-out if it's now invalid (before check-in)
+                        if (checkOut && e.target.value >= checkOut) {
+                          const next = new Date(e.target.value + "T00:00:00");
+                          next.setDate(next.getDate() + 1);
+                          setCheckOut(next.toISOString().slice(0, 10));
+                        }
+                      }}
+                      className="h-10 w-full rounded-lg border border-slate-200 px-2 text-sm outline-none focus:border-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-slate-600">{t("search.checkOut")}</label>
+                    <input
+                      type="date"
+                      value={checkOut}
+                      min={checkIn || todayStr(1)}
+                      onChange={(e) => setCheckOut(e.target.value)}
+                      className="h-10 w-full rounded-lg border border-slate-200 px-2 text-sm outline-none focus:border-sky-500"
+                    />
+                  </div>
+                </div>
+
                 <div className="mb-2 flex items-center gap-2 text-xs text-slate-600">
                   <Calendar className="h-3.5 w-3.5" />
-                  <span>{checkIn} → {checkOut}</span>
                   <span className="ml-auto font-semibold text-slate-900">{t("booking.nights", { count: nights })}</span>
                 </div>
 
