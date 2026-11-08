@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Search, MapPin, Calendar, Users, X, Filter, Star,
-  Phone, Bed, ArrowLeft, CheckCircle2, Loader2, ChevronRight,
+  Phone, Bed, ArrowLeft, CheckCircle2, Loader2, ChevronRight, ChevronDown,
   Wifi, Car, Tv, Coffee, Wind, Snowflake, LogOut, User, Building
 } from "lucide-react";
 
@@ -533,13 +533,15 @@ function ProviderSection({ provider, t, onSelectRoom }: {
   onSelectRoom: (room: Room) => void;
 }) {
   const availableCount = provider.rooms.filter(r => r.available).length;
-  const [collapsed, setCollapsed] = useState(false);
+  // Collapsed by default — guest taps the provider header to expand
+  // and see the rooms underneath.
+  const [collapsed, setCollapsed] = useState(true);
 
   return (
     <div className="rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden">
-      {/* Provider header */}
+      {/* Provider header — tap to expand/collapse */}
       <div
-        className="flex items-start gap-3 p-3 bg-gradient-to-r from-sky-50 to-cyan-50 cursor-pointer"
+        className="flex items-start gap-3 p-3 bg-gradient-to-r from-sky-50 to-cyan-50 cursor-pointer select-none"
         onClick={() => setCollapsed(!collapsed)}
       >
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white">
@@ -559,9 +561,15 @@ function ProviderSection({ provider, t, onSelectRoom }: {
               <Bed className="h-3 w-3" />
               <span className="font-semibold text-slate-700">{provider.rooms.length}</span> rooms
             </span>
-            {availableCount < provider.rooms.length && (
+            {availableCount < provider.rooms.length ? (
               <span className="text-emerald-600 font-semibold">{availableCount} available</span>
+            ) : (
+              <span className="text-emerald-600 font-semibold">All available</span>
             )}
+            <span className="text-slate-400">·</span>
+            <span className="text-slate-500">
+              {collapsed ? "Tap to view rooms" : "Tap to hide"}
+            </span>
           </div>
         </div>
         <a
@@ -572,11 +580,14 @@ function ProviderSection({ provider, t, onSelectRoom }: {
         >
           <Phone className="h-4 w-4" />
         </a>
+        <div className="flex h-9 w-7 shrink-0 items-center justify-center text-slate-400">
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </div>
       </div>
 
-      {/* Rooms list (under this provider) */}
+      {/* Rooms list (under this provider) — shown only when expanded */}
       {!collapsed && (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-slate-100 animate-[fadeIn_0.15s_ease-out]">
           {provider.rooms.map((room) => (
             <RoomCard
               key={room.id}
@@ -587,6 +598,12 @@ function ProviderSection({ provider, t, onSelectRoom }: {
           ))}
         </div>
       )}
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }
