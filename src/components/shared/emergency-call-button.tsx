@@ -1,36 +1,177 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Phone, X, Shield, HeartPulse } from "lucide-react";
+import {
+  Phone, X, Shield, HeartPulse, Flame, Ambulance, Siren, AlertTriangle,
+  type LucideIcon,
+} from "lucide-react";
 
 /**
  * Floating Emergency Call Button
  *
- * Fixed to bottom-right of the screen. Tap to expand and show two
- * emergency numbers for Bishoftu city:
- *   - Police: 9141
- *   - Hospital: 5645
+ * Fixed to bottom-left of the screen. Tap to expand and show emergency
+ * contacts for Bishoftu city.
  *
- * Tapping either number triggers a `tel:` link — on mobile devices
- * this opens the phone dialer; on desktop it's a no-op (or prompts
- * the OS to handle the call).
+ * Contacts are fetched from /api/public/emergency-contacts (configured
+ * by the admin in System Config). Falls back to hardcoded defaults
+ * (Police 9141, Hospital 5645) if the API fails or returns nothing.
  *
- * The button is hidden on the login pages (/ and /m and /police-app
- * when not authenticated) to avoid cluttering them. It only shows
- * when the user is inside the app (authenticated).
+ * Tapping any contact triggers a `tel:` link — on mobile devices this
+ * opens the phone dialer; on desktop it's a no-op (or prompts the OS).
+ *
+ * The button is always visible on all pages (login + authenticated).
  */
+
+interface EmergencyContact {
+  id: string;
+  type: "police" | "hospital" | "custom";
+  label: string;
+  labelAm?: string;
+  phone: string;
+  icon: string;
+  color: string;
+  sortOrder: number;
+}
+
+// Hardcoded fallback — used if API fails (e.g. DB down, network error)
+const FALLBACK_CONTACTS: EmergencyContact[] = [
+  {
+    id: "police",
+    type: "police",
+    label: "Bishoftu Police",
+    labelAm: "የቢሾፍቱ ፖሊስ",
+    phone: "9141",
+    icon: "shield",
+    color: "red",
+    sortOrder: 1,
+  },
+  {
+    id: "hospital",
+    type: "hospital",
+    label: "Bishoftu Hospital",
+    labelAm: "የቢሾፍቱ ሆስፒታል",
+    phone: "5645",
+    icon: "heart-pulse",
+    color: "orange",
+    sortOrder: 2,
+  },
+];
+
+// Map icon name (from API) → lucide-react component
+const ICON_MAP: Record<string, LucideIcon> = {
+  shield: Shield,
+  "heart-pulse": HeartPulse,
+  flame: Flame,
+  ambulance: Ambulance,
+  siren: Siren,
+  "alert-triangle": AlertTriangle,
+  phone: Phone,
+};
+
+// Map color name (from API) → gradient + border + text colors
+const COLOR_MAP: Record<string, {
+  gradient: string;
+  border: string;
+  text: string;
+  subtext: string;
+  bg: string;
+}> = {
+  red: {
+    gradient: "linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)",
+    border: "#fca5a5",
+    text: "#991b1b",
+    subtext: "#b91c1c",
+    bg: "#dc2626",
+  },
+  orange: {
+    gradient: "linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%)",
+    border: "#fdba74",
+    text: "#9a3412",
+    subtext: "#c2410c",
+    bg: "#ea580c",
+  },
+  amber: {
+    gradient: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
+    border: "#fcd34d",
+    text: "#92400e",
+    subtext: "#b45309",
+    bg: "#d97706",
+  },
+  rose: {
+    gradient: "linear-gradient(135deg, #ffe4e6 0%, #fecdd3 100%)",
+    border: "#fda4af",
+    text: "#9f1239",
+    subtext: "#be123c",
+    bg: "#e11d48",
+  },
+  emerald: {
+    gradient: "linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)",
+    border: "#6ee7b7",
+    text: "#065f46",
+    subtext: "#047857",
+    bg: "#059669",
+  },
+  sky: {
+    gradient: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
+    border: "#7dd3fc",
+    text: "#075985",
+    subtext: "#0369a1",
+    bg: "#0284c7",
+  },
+  indigo: {
+    gradient: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
+    border: "#a5b4fc",
+    text: "#3730a3",
+    subtext: "#4338ca",
+    bg: "#4f46e5",
+  },
+};
+
+// Cache fetched contacts for 5 minutes (avoids re-fetching on every page)
+let cachedContacts: EmergencyContact[] | null = null;
+let cacheExpiry = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
 export function EmergencyCallButton() {
   const [open, setOpen] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [contacts, setContacts] = useState<EmergencyContact[]>(FALLBACK_CONTACTS);
 
-  // Show on every page — emergency services should always be one tap
-  // away, including on login pages, registration pages, and authenticated
-  // dashboards. No path-based hiding.
+  // Show on every page — emergency services should always be one tap away
   useEffect(() => {
     setVisible(true);
   }, []);
 
-  // Close menu when clicking outside (or pressing Escape)
+  // Fetch contacts from API (with caching)
+  useEffect(() => {
+    if (!visible) return;
+
+    // Use cache if fresh
+    if (cachedContacts && Date.now() < cacheExpiry) {
+      setContacts(cachedContacts);
+      return;
+    }
+
+    let cancelled = false;
+    fetch("/api/public/emergency-contacts", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (Array.isArray(data.contacts) && data.contacts.length > 0) {
+          cachedContacts = data.contacts;
+          cacheExpiry = Date.now() + CACHE_TTL_MS;
+          setContacts(data.contacts);
+        }
+      })
+      .catch((err) => {
+        // Silently fall back to defaults — emergency button must always work
+        console.warn("[EmergencyCallButton] Failed to fetch contacts, using fallback:", err);
+      });
+
+    return () => { cancelled = true; };
+  }, [visible]);
+
+  // Close menu when pressing Escape
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -55,7 +196,7 @@ export function EmergencyCallButton() {
         gap: 8,
       }}
     >
-      {/* Expanded menu with the two emergency numbers */}
+      {/* Expanded menu with emergency contacts */}
       {open && (
         <div
           style={{
@@ -68,6 +209,7 @@ export function EmergencyCallButton() {
             boxShadow: "0 10px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)",
             border: "1px solid #e5e7eb",
             minWidth: 220,
+            maxWidth: 280,
             animation: "ghms-emg-pop 180ms ease-out",
           }}
         >
@@ -110,89 +252,67 @@ export function EmergencyCallButton() {
             </button>
           </div>
 
-          {/* Police — red */}
-          <a
-            href="tel:9141"
-            onClick={() => setOpen(false)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "12px 14px",
-              borderRadius: 12,
-              background: "linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)",
-              border: "1px solid #fca5a5",
-              color: "#991b1b",
-              textDecoration: "none",
-              fontWeight: 600,
-              transition: "transform 120ms ease, box-shadow 120ms ease",
-            }}
-            onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
-            onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-          >
-            <div style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: "#dc2626",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "white",
-              flexShrink: 0,
-            }}>
-              <Shield size={18} />
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 14, fontWeight: 700 }}>Bishoftu Police</span>
-              <span style={{ fontSize: 12, color: "#b91c1c", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
-                <Phone size={11} /> Tap to call 9141
-              </span>
-            </div>
-          </a>
+          {/* Render each contact dynamically */}
+          {contacts.map((contact) => {
+            const IconComp = ICON_MAP[contact.icon] || Phone;
+            const colors = COLOR_MAP[contact.color] || COLOR_MAP.sky;
+            const displayPhone = contact.phone.startsWith("+")
+              ? contact.phone
+              : contact.phone;
 
-          {/* Hospital — orange */}
-          <a
-            href="tel:5645"
-            onClick={() => setOpen(false)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "12px 14px",
-              borderRadius: 12,
-              background: "linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%)",
-              border: "1px solid #fdba74",
-              color: "#9a3412",
-              textDecoration: "none",
-              fontWeight: 600,
-              transition: "transform 120ms ease",
-            }}
-            onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
-            onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-          >
-            <div style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: "#ea580c",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "white",
-              flexShrink: 0,
-            }}>
-              <HeartPulse size={18} />
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 14, fontWeight: 700 }}>Bishoftu Hospital</span>
-              <span style={{ fontSize: 12, color: "#c2410c", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
-                <Phone size={11} /> Tap to call 5645
-              </span>
-            </div>
-          </a>
+            return (
+              <a
+                key={contact.id}
+                href={`tel:${contact.phone}`}
+                onClick={() => setOpen(false)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  background: colors.gradient,
+                  border: `1px solid ${colors.border}`,
+                  color: colors.text,
+                  textDecoration: "none",
+                  fontWeight: 600,
+                  transition: "transform 120ms ease, box-shadow 120ms ease",
+                }}
+                onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
+                onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              >
+                <div style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: colors.bg,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "white",
+                  flexShrink: 0,
+                }}>
+                  <IconComp size={18} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>
+                    {contact.label}
+                  </span>
+                  <span style={{
+                    fontSize: 12,
+                    color: colors.subtext,
+                    fontWeight: 500,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}>
+                    <Phone size={11} /> Tap to call {displayPhone}
+                  </span>
+                </div>
+              </a>
+            );
+          })}
         </div>
       )}
 

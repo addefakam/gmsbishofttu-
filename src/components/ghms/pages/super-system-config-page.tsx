@@ -22,11 +22,15 @@ import {
   CheckCircle2,
   Phone,
   Power,
+  Siren,
+  Plus,
+  Trash2,
+  GripVertical,
 } from "lucide-react";
 
 // ── Types ──
 
-type TabKey = "general" | "guesthouse" | "security" | "notifications" | "payment";
+type TabKey = "general" | "guesthouse" | "security" | "notifications" | "payment" | "emergency";
 
 interface GeneralSettings {
   systemName: string;
@@ -178,6 +182,7 @@ const TABS: Array<{
   { key: "security", label: "Security", icon: Shield },
   { key: "notifications", label: "Notifications", icon: Bell },
   { key: "payment", label: "Payment & Billing", icon: CreditCard },
+  { key: "emergency", label: "Emergency Contacts", icon: Siren },
 ];
 
 // ── Shared UI Components ──
@@ -1207,6 +1212,297 @@ function PaymentTab({
   );
 }
 
+// ── Emergency Contacts Tab ──
+
+interface EmergencyContact {
+  id: string;
+  type: "police" | "hospital" | "custom";
+  label: string;
+  labelAm?: string;
+  phone: string;
+  icon: string;
+  color: string;
+  sortOrder: number;
+}
+
+const ICON_OPTIONS = [
+  { value: "shield", label: "🛡️ Shield (Police)" },
+  { value: "heart-pulse", label: "❤️ Heart (Hospital)" },
+  { value: "flame", label: "🔥 Flame (Fire)" },
+  { value: "ambulance", label: "🚑 Ambulance" },
+  { value: "siren", label: "🚨 Siren" },
+  { value: "alert-triangle", label: "⚠️ Alert" },
+  { value: "phone", label: "📞 Phone" },
+];
+
+const COLOR_OPTIONS = [
+  { value: "red", label: "🔴 Red" },
+  { value: "orange", label: "🟠 Orange" },
+  { value: "amber", label: "🟡 Amber" },
+  { value: "rose", label: "🌸 Rose" },
+  { value: "emerald", label: "🟢 Emerald" },
+  { value: "sky", label: "🔵 Sky" },
+  { value: "indigo", label: "🟣 Indigo" },
+];
+
+function EmergencyTab() {
+  const [contacts, setContacts] = useState<EmergencyContact[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Fetch contacts on mount
+  useEffect(() => {
+    fetch("/api/admin/emergency-contacts", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        setContacts(Array.isArray(data.contacts) ? data.contacts : []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const save = () => {
+    setSaving(true);
+    fetch("/api/admin/emergency-contacts", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contacts }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.contacts) setContacts(data.contacts);
+        toast.success("Emergency contacts saved — visible on all apps");
+      })
+      .catch(() => toast.error("Failed to save emergency contacts"))
+      .finally(() => setSaving(false));
+  };
+
+  const updateContact = (id: string, partial: Partial<EmergencyContact>) => {
+    setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, ...partial } : c)));
+  };
+
+  const removeContact = (id: string) => {
+    setContacts((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const addContact = () => {
+    const newId = `custom-${Date.now()}`;
+    setContacts((prev) => [
+      ...prev,
+      {
+        id: newId,
+        type: "custom",
+        label: "New Contact",
+        labelAm: "",
+        phone: "",
+        icon: "phone",
+        color: "sky",
+        sortOrder: prev.length + 1,
+      },
+    ]);
+  };
+
+  const moveContact = (id: string, direction: "up" | "down") => {
+    setContacts((prev) => {
+      const idx = prev.findIndex((c) => c.id === id);
+      if (idx === -1) return prev;
+      const newIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (newIdx < 0 || newIdx >= prev.length) return prev;
+      const newArr = [...prev];
+      [newArr[idx], newArr[newIdx]] = [newArr[newIdx], newArr[idx]];
+      // Re-assign sortOrder based on new position
+      return newArr.map((c, i) => ({ ...c, sortOrder: i + 1 }));
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionCard
+        icon={Siren}
+        title="Emergency Contacts"
+        description="Configure the emergency phone numbers shown in the floating Emergency Call button across ALL apps (web admin, /find, /m, /police-app, /owner). Changes are visible immediately after saving."
+      >
+        {/* Contacts list */}
+        <div className="space-y-3">
+          {contacts.length === 0 && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+              No emergency contacts configured. The button will show defaults (Police 9141, Hospital 5645).
+            </div>
+          )}
+
+          {contacts.map((contact, idx) => (
+            <div
+              key={contact.id}
+              className="rounded-xl border border-slate-200 bg-slate-50/50 p-3"
+            >
+              {/* Top row: drag handle + delete */}
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <GripVertical className="h-4 w-4 text-slate-400" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Contact #{idx + 1} · {contact.type}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => moveContact(contact.id, "up")}
+                    disabled={idx === 0}
+                    className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30"
+                    title="Move up"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m18 15-6-6-6 6"/></svg>
+                  </button>
+                  <button
+                    onClick={() => moveContact(contact.id, "down")}
+                    disabled={idx === contacts.length - 1}
+                    className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30"
+                    title="Move down"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <button
+                    onClick={() => removeContact(contact.id)}
+                    className="rounded p-1 text-red-400 hover:bg-red-100 hover:text-red-700"
+                    title="Remove"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Fields grid */}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div>
+                  <label className="mb-0.5 block text-[10px] font-medium text-slate-600">Label (English)</label>
+                  <input
+                    type="text"
+                    value={contact.label}
+                    onChange={(e) => updateContact(contact.id, { label: e.target.value })}
+                    placeholder="e.g. Bishoftu Police"
+                    className={inputClass + " text-xs"}
+                  />
+                </div>
+                <div>
+                  <label className="mb-0.5 block text-[10px] font-medium text-slate-600">Label (Amharic)</label>
+                  <input
+                    type="text"
+                    value={contact.labelAm || ""}
+                    onChange={(e) => updateContact(contact.id, { labelAm: e.target.value })}
+                    placeholder="ለምሳሌ የቢሾፍቱ ፖሊስ"
+                    className={inputClass + " text-xs"}
+                    dir="auto"
+                  />
+                </div>
+                <div>
+                  <label className="mb-0.5 block text-[10px] font-medium text-slate-600">Phone number</label>
+                  <input
+                    type="tel"
+                    value={contact.phone}
+                    onChange={(e) => updateContact(contact.id, { phone: e.target.value })}
+                    placeholder="e.g. 9141"
+                    className={inputClass + " text-xs"}
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <label className="mb-0.5 block text-[10px] font-medium text-slate-600">Type</label>
+                  <select
+                    value={contact.type}
+                    onChange={(e) => updateContact(contact.id, { type: e.target.value as any })}
+                    className={inputClass + " text-xs"}
+                  >
+                    <option value="police">Police</option>
+                    <option value="hospital">Hospital</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-0.5 block text-[10px] font-medium text-slate-600">Icon</label>
+                  <select
+                    value={contact.icon}
+                    onChange={(e) => updateContact(contact.id, { icon: e.target.value })}
+                    className={inputClass + " text-xs"}
+                  >
+                    {ICON_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-0.5 block text-[10px] font-medium text-slate-600">Color</label>
+                  <select
+                    value={contact.color}
+                    onChange={(e) => updateContact(contact.id, { color: e.target.value })}
+                    className={inputClass + " text-xs"}
+                  >
+                    {COLOR_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Preview */}
+              <div className="mt-2 flex items-center gap-2 rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200">
+                <span className="text-[10px] font-medium text-slate-500">Preview:</span>
+                <a
+                  href={`tel:${contact.phone}`}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-50"
+                >
+                  <Phone className="h-3 w-3" />
+                  {contact.label} · {contact.phone}
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Add + Save buttons */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <button
+            onClick={addContact}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add new contact
+          </button>
+
+          <button
+            onClick={save}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Save contacts
+          </button>
+        </div>
+      </SectionCard>
+
+      {/* Info note */}
+      <div className="flex items-start gap-2 rounded-lg bg-sky-50 px-3 py-2 text-[11px] text-sky-900 ring-1 ring-sky-200">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-600" />
+        <div>
+          <p className="font-semibold">Where do these contacts appear?</p>
+          <p className="mt-0.5">
+            The floating red Emergency Call button (bottom-left corner) shows these contacts on every page:
+            web admin, /find (Bishoftu Bed Service), /m (mobile app), /police-app, and /owner.
+            The button fetches the latest contacts from the API every 5 minutes, so changes are visible
+            to users within 5 minutes of saving.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page Component ──
 
 export default function SuperSystemConfigPage() {
@@ -1528,6 +1824,7 @@ export default function SuperSystemConfigPage() {
               onPricingSave={autoSavePricing}
             />
           )}
+          {activeTab === "emergency" && <EmergencyTab />}
         </div>
       )}
     </div>
