@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import {
   Search, MapPin, Calendar, Users, X, Filter, Star,
   Phone, Bed, ArrowLeft, CheckCircle2, Loader2, ChevronRight,
-  Wifi, Car, Tv, Coffee, Wind, Snowflake, LogOut, User
+  Wifi, Car, Tv, Coffee, Wind, Snowflake, LogOut, User, Building
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -22,13 +22,21 @@ interface Room {
   description: string;
   image: string | null;
   providerId: string;
-  provider: {
-    id: string; name: string; phone: string; email: string;
-    address: string; subCity: string | null; woreda: string | null;
-    latitude: number | null; longitude: number | null;
-  };
   available: boolean;
   amenitiesList: string[];
+}
+
+interface ProviderWithRooms {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  subCity: string | null;
+  woreda: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  rooms: Room[];
 }
 
 interface GuestUser {
@@ -344,10 +352,11 @@ function SearchTab({ t, guest, onLoginRequired }: {
   const [maxPrice, setMaxPrice] = useState("");
   const [subCity, setSubCity] = useState("");
 
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [providers, setProviders] = useState<ProviderWithRooms[]>([]);
+  const [totalRooms, setTotalRooms] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<{ room: Room; provider: ProviderWithRooms } | null>(null);
 
   const search = useCallback(async () => {
     setLoading(true); setError("");
@@ -359,11 +368,17 @@ function SearchTab({ t, guest, onLoginRequired }: {
       if (minPrice) params.set("minPrice", minPrice);
       if (maxPrice) params.set("maxPrice", maxPrice);
       if (subCity) params.set("subCity", subCity);
-      const data = await fetchPublic<{ rooms: Room[]; total: number }>(`/api/public/rooms/search?${params}`);
-      setRooms(data?.rooms || []);
+      const data = await fetchPublic<{
+        providers: ProviderWithRooms[];
+        totalProviders: number;
+        totalRooms: number;
+      }>(`/api/public/rooms/search?${params}`);
+      setProviders(data?.providers || []);
+      setTotalRooms(data?.totalRooms || 0);
     } catch (e) {
       setError(t("errors.searchFailed"));
-      setRooms([]);
+      setProviders([]);
+      setTotalRooms(0);
     } finally { setLoading(false); }
   }, [roomType, minPrice, maxPrice, subCity, t]);
 
@@ -448,18 +463,24 @@ function SearchTab({ t, guest, onLoginRequired }: {
       {/* Results header */}
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-bold text-slate-900">All rooms in Bishoftu</h2>
+          <h2 className="text-sm font-bold text-slate-900">All guesthouses in Bishoftu</h2>
           <p className="text-xs text-slate-500">
-            {loading ? t("search.loading") : t("search.results", { count: rooms.length })}
+            {loading ? t("search.loading") : (
+              <>
+                <span className="font-semibold text-slate-700">{providers.length}</span> guesthouses
+                {" · "}
+                <span className="font-semibold text-slate-700">{totalRooms}</span> rooms
+              </>
+            )}
           </p>
         </div>
         <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-          All guesthouses
+          {providers.length} listed
         </span>
       </div>
 
       {/* Hint — let guest know dates are picked at booking time */}
-      {!loading && rooms.length > 0 && (
+      {!loading && providers.length > 0 && (
         <div className="mb-3 rounded-xl bg-sky-50 px-3 py-2 text-[11px] text-sky-800 border border-sky-100">
           💡 Tap any room to see details and request a booking. You'll pick check-in + check-out dates when booking.
         </div>
@@ -471,15 +492,20 @@ function SearchTab({ t, guest, onLoginRequired }: {
             <div key={i} className="h-32 animate-pulse rounded-2xl bg-slate-100" />
           ))}
         </div>
-      ) : rooms.length === 0 ? (
+      ) : providers.length === 0 ? (
         <div className="rounded-2xl bg-white p-8 text-center border border-slate-100">
           <Bed className="mx-auto mb-3 h-12 w-12 text-slate-300" />
           <p className="text-sm text-slate-500">{t("search.noResults")}</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {rooms.map((room) => (
-            <RoomCard key={room.id} room={room} t={t} onViewDetails={() => setSelectedRoom(room)} />
+        <div className="space-y-5">
+          {providers.map((provider) => (
+            <ProviderSection
+              key={provider.id}
+              provider={provider}
+              t={t}
+              onSelectRoom={(room) => setSelectedRoom({ room, provider })}
+            />
           ))}
         </div>
       )}
@@ -487,7 +513,8 @@ function SearchTab({ t, guest, onLoginRequired }: {
       {/* Room detail sheet — picks its own dates inside */}
       {selectedRoom && (
         <RoomDetailSheet
-          room={selectedRoom}
+          room={selectedRoom.room}
+          provider={selectedRoom.provider}
           t={t}
           guest={guest}
           onClose={() => setSelectedRoom(null)}
@@ -499,7 +526,72 @@ function SearchTab({ t, guest, onLoginRequired }: {
   );
 }
 
-// ── Room Card ────────────────────────────────────────────────────────
+// ── Provider Section (group of rooms under one guesthouse) ───────────
+function ProviderSection({ provider, t, onSelectRoom }: {
+  provider: ProviderWithRooms;
+  t: (key: string, opts?: any) => string;
+  onSelectRoom: (room: Room) => void;
+}) {
+  const availableCount = provider.rooms.filter(r => r.available).length;
+  const [collapsed, setCollapsed] = useState(false);
+
+  return (
+    <div className="rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden">
+      {/* Provider header */}
+      <div
+        className="flex items-start gap-3 p-3 bg-gradient-to-r from-sky-50 to-cyan-50 cursor-pointer"
+        onClick={() => setCollapsed(!collapsed)}
+      >
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white">
+          <Building className="h-5 w-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-bold text-slate-900 truncate">{provider.name}</h3>
+          <div className="flex items-center gap-1 text-[11px] text-slate-600 mt-0.5">
+            <MapPin className="h-3 w-3 shrink-0" />
+            <span className="truncate">
+              {provider.address || "Bishoftu"}
+              {provider.subCity && ` · ${t(`subCities.${provider.subCity}`, { defaultValue: provider.subCity })}`}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500">
+            <span className="flex items-center gap-0.5">
+              <Bed className="h-3 w-3" />
+              <span className="font-semibold text-slate-700">{provider.rooms.length}</span> rooms
+            </span>
+            {availableCount < provider.rooms.length && (
+              <span className="text-emerald-600 font-semibold">{availableCount} available</span>
+            )}
+          </div>
+        </div>
+        <a
+          href={`tel:${provider.phone}`}
+          onClick={(e) => e.stopPropagation()}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-sky-600 shadow-sm border border-sky-200 hover:bg-sky-50"
+          title={`Call ${provider.phone}`}
+        >
+          <Phone className="h-4 w-4" />
+        </a>
+      </div>
+
+      {/* Rooms list (under this provider) */}
+      {!collapsed && (
+        <div className="divide-y divide-slate-100">
+          {provider.rooms.map((room) => (
+            <RoomCard
+              key={room.id}
+              room={room}
+              t={t}
+              onViewDetails={() => onSelectRoom(room)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Room Card (single room row — no provider info, that's in the section header) ────
 function RoomCard({ room, t, onViewDetails }: {
   room: Room;
   t: (key: string, opts?: any) => string;
@@ -510,76 +602,64 @@ function RoomCard({ room, t, onViewDetails }: {
   return (
     <div
       onClick={onViewDetails}
-      className="group cursor-pointer overflow-hidden rounded-2xl bg-white shadow-sm border border-slate-100 transition hover:shadow-md"
+      className="group cursor-pointer flex items-center gap-3 p-3 hover:bg-sky-50/50 transition"
     >
-      <div className="flex">
-        {/* Image / placeholder */}
-        <div className="relative h-32 w-32 shrink-0 bg-gradient-to-br from-sky-100 to-cyan-100">
-          {room.image ? (
-            <img src={room.image} alt={room.name} className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center">
-              <Bed className="h-10 w-10 text-sky-400" />
-            </div>
-          )}
-          {room.available ? (
-            <span className="absolute top-1.5 left-1.5 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white shadow">
-              {t("roomCard.available")}
-            </span>
-          ) : (
-            <span className="absolute top-1.5 left-1.5 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white shadow">
+      {/* Image / placeholder */}
+      <div className="relative h-16 w-16 shrink-0 rounded-lg overflow-hidden bg-gradient-to-br from-sky-100 to-cyan-100">
+        {room.image ? (
+          <img src={room.image} alt={room.name} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <Bed className="h-6 w-6 text-sky-400" />
+          </div>
+        )}
+        {!room.available && (
+          <span className="absolute inset-0 flex items-center justify-center bg-black/40">
+            <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
               {t("roomCard.unavailable")}
             </span>
-          )}
-        </div>
+          </span>
+        )}
+      </div>
 
-        {/* Info */}
-        <div className="flex flex-1 flex-col p-3">
-          <div className="mb-1 flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="truncate text-sm font-bold text-slate-900">{room.name}</h3>
-              <p className="truncate text-[11px] text-slate-500">
-                {t(`roomTypes.${room.type}`)} · {t("roomCard.floor", { floor: room.floor })}
-              </p>
-            </div>
-            <div className="shrink-0 text-right">
-              <div className="text-base font-bold text-sky-600">{priceDisplay}</div>
-              <div className="text-[10px] text-slate-400">{t("roomCard.perNight")}</div>
-            </div>
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h4 className="truncate text-sm font-semibold text-slate-900">{room.name}</h4>
+            <p className="text-[11px] text-slate-500">
+              {t(`roomTypes.${room.type}`, { defaultValue: room.type })}
+              {" · "}
+              {t("roomCard.floor", { floor: room.floor })}
+            </p>
           </div>
-
-          {/* Guesthouse name */}
-          <div className="mb-1.5 flex items-center gap-1 text-[11px] text-slate-600">
-            <MapPin className="h-3 w-3 shrink-0 text-slate-400" />
-            <span className="truncate">{room.provider.name}</span>
-            {room.provider.subCity && (
-              <span className="text-slate-400">· {t(`subCities.${room.provider.subCity}`, { defaultValue: room.provider.subCity })}</span>
-            )}
-          </div>
-
-          {/* Capacity + amenities */}
-          <div className="mt-auto flex items-center gap-2 text-[10px] text-slate-500">
-            <span className="flex items-center gap-0.5">
-              <Users className="h-3 w-3" />
-              {t("roomCard.capacity", { count: room.capacity })}
-            </span>
-            {room.amenitiesList.slice(0, 3).map((a, i) => (
-              <span key={i} className="rounded bg-slate-100 px-1.5 py-0.5">{a}</span>
-            ))}
+          <div className="shrink-0 text-right">
+            <div className="text-sm font-bold text-sky-600">{priceDisplay}</div>
+            <div className="text-[10px] text-slate-400">{t("roomCard.perNight")}</div>
           </div>
         </div>
 
-        <div className="flex items-center pr-2">
-          <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-sky-500" />
+        {/* Capacity + amenities */}
+        <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-500">
+          <span className="flex items-center gap-0.5">
+            <Users className="h-3 w-3" />
+            {t("roomCard.capacity", { count: room.capacity })}
+          </span>
+          {room.amenitiesList.slice(0, 2).map((a, i) => (
+            <span key={i} className="rounded bg-slate-100 px-1.5 py-0.5">{a}</span>
+          ))}
         </div>
       </div>
+
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-sky-500" />
     </div>
   );
 }
 
 // ── Room Detail Sheet ────────────────────────────────────────────────
-function RoomDetailSheet({ room, t, guest, onClose, onLoginRequired, onBooked }: {
+function RoomDetailSheet({ room, provider, t, guest, onClose, onLoginRequired, onBooked }: {
   room: Room;
+  provider: ProviderWithRooms;
   t: (key: string, opts?: any) => string;
   guest: GuestUser | null;
   onClose: () => void;
@@ -669,14 +749,14 @@ function RoomDetailSheet({ room, t, guest, onClose, onLoginRequired, onBooked }:
                 <div className="flex items-center gap-2">
                   <MapPin className="h-4 w-4 text-sky-600" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-900">{room.provider.name}</p>
+                    <p className="text-sm font-semibold text-slate-900">{provider.name}</p>
                     <p className="text-[11px] text-slate-600">
-                      {room.provider.address || "Bishoftu"}
-                      {room.provider.subCity && ` · ${t(`subCities.${room.provider.subCity}`, { defaultValue: room.provider.subCity })}`}
+                      {provider.address || "Bishoftu"}
+                      {provider.subCity && ` · ${t(`subCities.${provider.subCity}`, { defaultValue: provider.subCity })}`}
                     </p>
                   </div>
                   <a
-                    href={`tel:${room.provider.phone}`}
+                    href={`tel:${provider.phone}`}
                     className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-sky-600 shadow-sm border border-sky-200"
                   >
                     <Phone className="h-4 w-4" />
