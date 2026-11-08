@@ -3894,6 +3894,17 @@
       "bookingFailed": "Failed to submit booking request. Please try again.",
       "roomUnavailable": "This room is already booked for the selected dates.",
       "sessionExpired": "Your session has expired. Please sign in again."
+    },
+    "install": {
+      "title": "Install Bishoftu Rooms",
+      "desc": "Add to your home screen for faster access",
+      "button": "Install app",
+      "later": "Not now",
+      "menuHint": "Tap 'Install app' to add Bishoftu Rooms to your home screen.",
+      "iosHint": "Tap the Share button, then 'Add to Home Screen'.",
+      "androidHint": "Tap the menu (⋮), then 'Install app' or 'Add to Home screen'.",
+      "desktopHint": "Tap the install icon (⊕) in the address bar.",
+      "success": "Installed! Find Bishoftu Rooms on your home screen."
     }
   }
 }

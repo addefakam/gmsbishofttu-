@@ -7,6 +7,7 @@ import {
   Phone, Bed, ArrowLeft, CheckCircle2, Loader2, ChevronRight, ChevronDown,
   Wifi, Car, Tv, Coffee, Wind, Snowflake, LogOut, User, Building
 } from "lucide-react";
+import PwaInstallPrompt from "@/components/pwa-install-prompt";
 
 // ── Types ────────────────────────────────────────────────────────────
 interface Room {
@@ -94,6 +95,18 @@ export function RoomSearchPage() {
 
   return (
     <div className="min-h-dvh bg-sky-50">
+      {/* PWA Install Prompt — asks the user to install the app.
+          autoPrompt: triggers the native install dialog on first user gesture.
+          showOnMobile: shows a bottom-sheet style prompt on phones.
+          dismissStorageKey: per-app dismissal (separate from main app). */}
+      <PwaInstallPrompt
+        titleKey="findApp.install.title"
+        descKey="findApp.install.desc"
+        dismissStorageKey="ghms_find_install_dismissed"
+        showOnMobile={true}
+        autoPrompt={true}
+      />
+
       {/* Header */}
       <header className="sticky top-0 z-40 bg-gradient-to-r from-sky-600 to-cyan-600 text-white shadow-lg shadow-sky-600/20">
         <div className="mx-auto max-w-5xl px-4 py-3">
