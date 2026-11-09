@@ -292,6 +292,67 @@ async function repairReservationIntegrity(): Promise<void> {
       }
     }
 
+    // Step 9b: Ensure ALL Guest columns exist (especially otpCode +
+    // otpExpiresAt which were added for the /find app's phone+OTP auth,
+    // and providerId which was made nullable). prisma.guest.update() /
+    // findFirst() will throw "column does not exist" if these are missing.
+    const guestColumns: Array<[string, string]> = [
+      ["otpCode", "TEXT"],
+      ["otpExpiresAt", "TIMESTAMP(3)"],
+      ["email", "TEXT NOT NULL DEFAULT ''"],
+      ["phone", "TEXT NOT NULL DEFAULT ''"],
+      ["idNumber", "TEXT NOT NULL DEFAULT ''"],
+      ["idType", "TEXT NOT NULL DEFAULT ''"],
+      ["nationality", "TEXT NOT NULL DEFAULT ''"],
+      ["region", "TEXT NOT NULL DEFAULT ''"],
+      ["zone", "TEXT NOT NULL DEFAULT ''"],
+      ["woreda", "TEXT NOT NULL DEFAULT ''"],
+      ["kebele", "TEXT NOT NULL DEFAULT ''"],
+      ["houseNumber", "TEXT NOT NULL DEFAULT ''"],
+      ["streetName", "TEXT NOT NULL DEFAULT ''"],
+      ["plateNumber", "TEXT NOT NULL DEFAULT ''"],
+      ["weapon", "TEXT NOT NULL DEFAULT ''"],
+      ["address", "TEXT NOT NULL DEFAULT ''"],
+      ["notes", "TEXT NOT NULL DEFAULT ''"],
+      ["vip", "BOOLEAN NOT NULL DEFAULT false"],
+      ["totalSpent", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
+      ["totalStays", "INTEGER NOT NULL DEFAULT 0"],
+    ];
+    for (const [col, def] of guestColumns) {
+      try {
+        await client.query(`ALTER TABLE "Guest" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
+      } catch (colErr) {
+        console.warn(`[ensureReservationIntegrity] Could not add Guest.${col}:`, colErr instanceof Error ? colErr.message : colErr);
+      }
+    }
+
+    // Also make Guest.providerId nullable (for OTP-registered guests
+    // without a provider). Idempotent — no-op if already nullable.
+    try {
+      await client.query(`ALTER TABLE "Guest" ALTER COLUMN "providerId" DROP NOT NULL`);
+    } catch (colErr) {
+      // Already nullable or column missing — log but don't throw
+      console.warn(`[ensureReservationIntegrity] Could not drop NOT NULL on Guest.providerId:`, colErr instanceof Error ? colErr.message : colErr);
+    }
+
+    // Step 9c: Ensure Room table has all required columns too (since
+    // prisma.room.update() is called during checkout to set status=AVAILABLE)
+    const roomColumns: Array<[string, string]> = [
+      ["pricePerNightWeekend", "DOUBLE PRECISION"],
+      ["image", "TEXT"],
+      ["amenities", "TEXT NOT NULL DEFAULT ''"],
+      ["description", "TEXT NOT NULL DEFAULT ''"],
+      ["status", "RoomStatus NOT NULL DEFAULT 'AVAILABLE'"],
+      ["type", "RoomType NOT NULL DEFAULT 'SINGLE'"],
+    ];
+    for (const [col, def] of roomColumns) {
+      try {
+        await client.query(`ALTER TABLE "Room" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
+      } catch (colErr) {
+        console.warn(`[ensureReservationIntegrity] Could not add Room.${col}:`, colErr instanceof Error ? colErr.message : colErr);
+      }
+    }
+
     // Step 10: Backfill NULL values in Reservation's other non-nullable
     // columns. Same pattern as ensure-not-null-defaults.ts but scoped
     // to Reservation only.
