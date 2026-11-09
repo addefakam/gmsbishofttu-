@@ -262,7 +262,37 @@ async function repairReservationIntegrity(): Promise<void> {
       console.log(`[ensureReservationIntegrity] Reassigned ${updateResult.rowCount || 0} orphan reservation(s) to placeholder Room (preserved history).`);
     }
 
-    // Step 9: Backfill NULL values in Reservation's other non-nullable
+    // Step 9: Ensure ALL Reservation columns exist (especially guestNotes
+    // which was added recently and may be missing on the production DB).
+    // ALTER TABLE ADD COLUMN IF NOT EXISTS is idempotent — safe to re-run.
+    // This is critical: prisma.reservation.findFirst() / findMany() will
+    // throw "column does not exist" if guestNotes is missing from the DB
+    // even though it's in the Prisma schema.
+    const reservationColumns: Array<[string, string]> = [
+      ["guestNotes", "TEXT NOT NULL DEFAULT ''"],
+      ["exceptionReason", "TEXT NOT NULL DEFAULT ''"],
+      ["exceptionallyReserved", "BOOLEAN NOT NULL DEFAULT false"],
+      ["secondGuestName", "TEXT NOT NULL DEFAULT ''"],
+      ["secondGuestPhone", "TEXT NOT NULL DEFAULT ''"],
+      ["secondGuestIdNumber", "TEXT NOT NULL DEFAULT ''"],
+      ["taxAmount", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
+      ["discountAmount", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
+      ["paidAmount", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
+      ["balance", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
+      ["groupBookingId", "TEXT"],
+      ["actualCheckIn", "TIMESTAMP(3)"],
+      ["actualCheckOut", "TIMESTAMP(3)"],
+    ];
+    for (const [col, def] of reservationColumns) {
+      try {
+        await client.query(`ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
+      } catch (colErr) {
+        // Don't swallow silently — log so we can debug
+        console.warn(`[ensureReservationIntegrity] Could not add Reservation.${col}:`, colErr instanceof Error ? colErr.message : colErr);
+      }
+    }
+
+    // Step 10: Backfill NULL values in Reservation's other non-nullable
     // columns. Same pattern as ensure-not-null-defaults.ts but scoped
     // to Reservation only.
     const reservationBackfills: Array<[string, string]> = [
@@ -281,6 +311,7 @@ async function repairReservationIntegrity(): Promise<void> {
       ["secondGuestPhone", "''"],
       ["secondGuestIdNumber", "''"],
       ["exceptionReason", "''"],
+      ["guestNotes", "''"],
       ["providerId", "''"],
     ];
     for (const [col, defaultExpr] of reservationBackfills) {
