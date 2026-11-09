@@ -8,7 +8,11 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[payment] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { staffPermissionKey: "reservations" });

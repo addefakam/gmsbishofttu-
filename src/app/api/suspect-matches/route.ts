@@ -7,7 +7,11 @@ import { ensureSuspectTables } from "@/lib/suspect-check";
 
 import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export async function GET(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[suspect-matches] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     // Allow POLICE, SUPERUSER, and OPERATOR to view suspect matches.
@@ -104,7 +108,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[suspect-matches] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     requirePolice(auth);

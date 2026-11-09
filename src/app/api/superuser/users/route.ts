@@ -10,8 +10,16 @@ import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 // GET /api/superuser/users — List ALL users across all providers with stats
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[users] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[users] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     resetInitFlag();
     await ensureDatabase();
@@ -144,8 +152,16 @@ export async function GET(req: NextRequest) {
 
 // POST /api/superuser/users — Create a new user (any role, any provider)
 export async function POST(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[users] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[users] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     resetInitFlag();
     await ensureDatabase();

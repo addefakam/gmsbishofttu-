@@ -22,8 +22,16 @@ const DEFAULT_SETTINGS = {
 };
 
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[settings] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureSettingsColumns();
+    } catch (migErr) {
+      console.warn("[settings] ensureSettingsColumns failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
 
@@ -71,8 +79,16 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[settings] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureSettingsColumns();
+    } catch (migErr) {
+      console.warn("[settings] ensureSettingsColumns failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { allowSuperuser: true });

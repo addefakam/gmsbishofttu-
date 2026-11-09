@@ -7,8 +7,16 @@ import { logAudit } from "@/lib/audit";
 import { ensureProviderStatusEnum } from "@/lib/ensure-provider-enum";
 import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[police-intelligence] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[police-intelligence] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     requirePolice(auth);

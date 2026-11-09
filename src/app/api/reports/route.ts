@@ -4,7 +4,11 @@ import { getAuthContext, getProviderFilter, AuthError } from "@/lib/tenant";
 
 import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export async function GET(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[reports] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     const { providerId } = getProviderFilter(auth);

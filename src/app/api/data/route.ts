@@ -24,10 +24,26 @@ async function safeUpsert<T extends { id: string }>(
 }
 
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[data] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureSettingsColumns();
+    } catch (migErr) {
+      console.warn("[data] ensureSettingsColumns failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[data] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[data] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     if (auth.role !== "SUPERUSER") {
@@ -180,10 +196,26 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[data] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureSettingsColumns();
+    } catch (migErr) {
+      console.warn("[data] ensureSettingsColumns failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[data] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[data] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     if (auth.role !== "SUPERUSER") {

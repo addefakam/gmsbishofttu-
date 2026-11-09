@@ -9,7 +9,11 @@ import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
  * Uses a template and renders it per guest.
  */
 export async function POST(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[bulk-send] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     const { providerId } = getProviderFilter(auth);

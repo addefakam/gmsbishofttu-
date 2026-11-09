@@ -29,8 +29,16 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[certificate] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[certificate] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureDatabase();
     const auth = await getAuthContext(req);

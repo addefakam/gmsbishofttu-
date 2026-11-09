@@ -26,7 +26,11 @@ const RANK_HIERARCHY: Record<PoliceRank, number> = {
  * - SUPERUSER: see all police accounts
  */
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[police-officers] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
 
@@ -73,7 +77,11 @@ export async function GET(req: NextRequest) {
  * - POLICE VIEWER: cannot create
  */
 export async function POST(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[police-officers] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
 
@@ -195,7 +203,11 @@ export async function POST(req: NextRequest) {
  * - POLICE OFFICER: can update VIEWER only
  */
 export async function PUT(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[police-officers] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
 
@@ -320,7 +332,11 @@ export async function PUT(req: NextRequest) {
  * - POLICE OFFICER: can delete VIEWER only
  */
 export async function DELETE(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[police-officers] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
 

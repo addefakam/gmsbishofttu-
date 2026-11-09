@@ -13,10 +13,26 @@ import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[dashboard] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[dashboard] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[dashboard] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureSettingsColumns();
+    } catch (migErr) {
+      console.warn("[dashboard] ensureSettingsColumns failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     const filter = getProviderFilter(auth);

@@ -25,8 +25,16 @@ export const dynamic = "force-dynamic";
  * Returns 403 if the flag is OFF or if the user lacks permission.
  */
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[operator-room-availability] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[operator-room-availability] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureNewTables();
     const auth = await getAuthContext(req);

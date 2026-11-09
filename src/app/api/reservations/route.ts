@@ -16,7 +16,11 @@ import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[reservations] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     // ── CRITICAL: ensure GroupBooking table exists BEFORE the LEFT JOIN ──
     // The raw SQL below does LEFT JOIN "GroupBooking" — if that table
@@ -208,7 +212,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[reservations] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     const { providerId } = getProviderFilter(auth);

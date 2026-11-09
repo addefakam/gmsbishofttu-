@@ -6,7 +6,11 @@ import { ensureNewTables } from "@/lib/ensure-tables";
 
 import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[[id]] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureNewTables();
     const auth = await getAuthContext(req);
@@ -45,7 +49,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[[id]] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureNewTables();
     const auth = await getAuthContext(req);
@@ -178,7 +186,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[[id]] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureNewTables();
     const auth = await getAuthContext(req);

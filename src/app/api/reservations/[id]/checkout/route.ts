@@ -8,7 +8,15 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Ensure schema integrity BEFORE the try block — but wrap it so errors
+  // don't escape the handler (which would cause Vercel to return a plain-
+  // text error page → frontend fails with "Unexpected token 'A'").
+  try {
     await ensureReservationIntegrity();
+  } catch (migErr) {
+    console.warn("[checkout] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+  }
+
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { staffPermissionKey: "reservations", staffCanCreate: true });
@@ -16,7 +24,13 @@ export async function POST(
     const { id } = await params;
     const { providerId } = getProviderFilter(auth);
 
-    const reservation = await db.reservation.findFirst({ where: { id, providerId } });
+    const reservation = await db.reservation.findFirst({
+      where: { id, providerId },
+      include: {
+        guest: { select: { id: true, name: true, phone: true } },
+        room: { select: { id: true, number: true, name: true, status: true, providerId: true } },
+      },
+    });
     if (!reservation) {
       return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
     }
@@ -39,11 +53,12 @@ export async function POST(
       },
       include: {
         guest: { select: { id: true, name: true, phone: true } },
+        room: { select: { id: true, number: true, name: true, status: true, providerId: true } },
       },
     });
 
     // Update room status to AVAILABLE
-    await db.room.update({ select: { id: true, number: true, status: true, providerId: true },
+    await db.room.update({
       where: { id: reservation.roomId },
       data: { status: "AVAILABLE" },
     });

@@ -20,7 +20,11 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[availability] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     const { isPolice, providerId } = getProviderFilter(auth);

@@ -15,9 +15,21 @@ import {
 } from "@/lib/subscription";
 
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[my-subscription] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureSettingsColumns();
+    } catch (migErr) {
+      console.warn("[my-subscription] ensureSettingsColumns failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[my-subscription] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     // Ensure critical columns/tables exist BEFORE any Prisma query
     await ensureInlineMigrations();
@@ -212,9 +224,21 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[my-subscription] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureSettingsColumns();
+    } catch (migErr) {
+      console.warn("[my-subscription] ensureSettingsColumns failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[my-subscription] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     // Ensure critical columns/tables exist BEFORE any Prisma query
     await ensureInlineMigrations();

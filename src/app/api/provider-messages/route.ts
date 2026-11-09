@@ -47,8 +47,16 @@ async function ensureProviderMessageTable(): Promise<void> {
  *   provider and the specified provider. Also marks received messages as read.
  */
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[provider-messages] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[provider-messages] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const { searchParams } = new URL(req.url);
     const withProviderId = searchParams.get("with");
@@ -77,8 +85,16 @@ export async function GET(req: NextRequest) {
 
     // ── Full conversation/thread mode ──
     // Only run table creation for the full mode (not the lightweight unread count)
+    try {
     await ensureProviderMessageTable();
+    } catch (migErr) {
+      console.warn("[provider-messages] ensureProviderMessageTable failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureNewTables();
+    } catch (migErr) {
+      console.warn("[provider-messages] ensureNewTables failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
     const auth = await getAuthContext(req);
     const filter = getProviderFilter(auth);
     if (filter.isPolice) {
@@ -287,8 +303,16 @@ export async function GET(req: NextRequest) {
  * Sends a message from the current provider to the specified provider.
  */
 export async function POST(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[provider-messages] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[provider-messages] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureProviderMessageTable();
     await ensureNewTables();

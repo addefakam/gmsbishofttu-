@@ -10,7 +10,11 @@ import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
  * Returns all user accounts in the system. Requires active joint session.
  */
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[users] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     // ── Deploy-blocker fix: require authenticated session first ──
     const auth = await getAuthContext(req);

@@ -14,9 +14,21 @@ import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
  * (both ghms_token + ghms_token_joint cookies with valid SUPERUSER + POLICE ADMIN).
  */
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[stats] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[stats] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[stats] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     // ── Deploy-blocker fix: require authenticated session first ──
     const auth = await getAuthContext(req);

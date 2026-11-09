@@ -18,7 +18,11 @@ import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
  */
 
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[performance] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureDatabase();
     const auth = await getAuthContext(req);

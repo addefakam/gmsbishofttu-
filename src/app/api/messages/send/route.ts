@@ -28,7 +28,11 @@ function renderTemplate(body: string, vars: TemplateVars): string {
 }
 
 export async function POST(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[send] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     const { providerId } = getProviderFilter(auth);

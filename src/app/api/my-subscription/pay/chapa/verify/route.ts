@@ -15,8 +15,16 @@ import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
  * Body: { subPrefix?: string }  (subscription ID prefix from URL param)
  */
 export async function POST(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[verify] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[verify] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureInlineMigrations();
 

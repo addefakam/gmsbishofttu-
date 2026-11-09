@@ -27,8 +27,16 @@ const DEFAULT_PAYMENT = {
  * Deploy-blocker fix: requires authenticated session.
  */
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[system-config] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureSettingsColumns();
+    } catch (migErr) {
+      console.warn("[system-config] ensureSettingsColumns failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     // ── Deploy-blocker fix: require auth — this leaks payment config ──
     const auth = await getAuthContext(req);

@@ -48,7 +48,11 @@ import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
  *   }
  */
 export async function POST(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[bulk-action] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { staffPermissionKey: "reservations", staffCanCreate: true });

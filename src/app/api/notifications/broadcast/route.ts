@@ -11,7 +11,11 @@ import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
  * via SMS, WhatsApp, Telegram, or In-App notification.
  */
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[broadcast] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureNewTables();
     const auth = await getAuthContext(req);
@@ -51,7 +55,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[broadcast] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureNewTables();
     const auth = await getAuthContext(req);

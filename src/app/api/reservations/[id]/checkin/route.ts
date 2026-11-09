@@ -9,7 +9,14 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Ensure schema integrity — wrapped so errors don't escape the handler
+  // (would cause Vercel to return plain-text error → frontend JSON parse fail)
+  try {
     await ensureReservationIntegrity();
+  } catch (migErr) {
+    console.warn("[checkin] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+  }
+
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { staffPermissionKey: "reservations", staffCanCreate: true });

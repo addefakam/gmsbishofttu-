@@ -10,7 +10,11 @@ import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
  * Returns the full assignment map: guest → room.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[auto-assign] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     const { providerId } = getProviderFilter(auth);

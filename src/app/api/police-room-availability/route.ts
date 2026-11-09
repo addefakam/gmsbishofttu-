@@ -12,8 +12,16 @@ import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[police-room-availability] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[police-room-availability] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureNewTables();
     const auth = await getAuthContext(req);

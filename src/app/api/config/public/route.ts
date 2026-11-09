@@ -19,8 +19,16 @@ import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
  * supportPhone so the client falls back to "no support line shown".
  */
 export async function GET() {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[public] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureSettingsColumns();
+    } catch (migErr) {
+      console.warn("[public] ensureSettingsColumns failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const sysSettings = await db.settings.findFirst({
       where: { providerId: null },

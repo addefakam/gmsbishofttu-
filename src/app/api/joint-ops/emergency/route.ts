@@ -14,8 +14,16 @@ import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
  * - unsuspend-all: Unsuspend all SUSPENDED guesthouses
  */
 export async function POST(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[emergency] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[emergency] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     // ── Deploy-blocker fix: require authenticated session first ──
     const auth = await getAuthContext(req);

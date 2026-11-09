@@ -60,7 +60,11 @@ async function ensureEndOfDayReportTable(): Promise<void> {
  * the counted cash + sign off.
  */
 export async function GET(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[owner-eod] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureEndOfDayReportTable();
     await ensureNewTables();
@@ -177,7 +181,11 @@ export async function GET(req: NextRequest) {
  * Signs off the End-of-Day report for the given date.
  */
 export async function POST(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[owner-eod] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureEndOfDayReportTable();
     await ensureNewTables();

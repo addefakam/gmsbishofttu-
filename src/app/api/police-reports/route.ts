@@ -12,9 +12,21 @@ import { ensureNotNullableDefaults } from "@/lib/ensure-not-null-defaults";
 import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 
 export async function GET(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[police-reports] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureProviderStatusEnum();
+    } catch (migErr) {
+      console.warn("[police-reports] ensureProviderStatusEnum failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[police-reports] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
     // ── CRITICAL: auto-fix enum/TEXT column mismatch BEFORE any Prisma call ──
     // The DB column for Provider.status (and other enum-typed fields) might
     // still be TEXT. Native db.provider.count({ where: { status: ... } })

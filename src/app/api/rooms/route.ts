@@ -159,7 +159,11 @@ async function createRoomRaw(opts: {
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[rooms] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     // ── CRITICAL: ensure GroupBooking + other JOIN targets exist ──
     // /api/reservations GET (called in parallel from the Accommodation
@@ -178,7 +182,11 @@ export async function GET(req: NextRequest) {
     // this call, the SELECT below fails on databases that haven't yet
     // had the column added — causing "Failed to load guest data" on the
     // accommodation page (which fetches rooms in parallel with guests).
+    try {
     await ensureDatabase();
+    } catch (migErr) {
+      console.warn("[rooms] ensureDatabase failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
     const auth = await getAuthContext(req);
     const filter = getProviderFilter(auth);
 
@@ -331,7 +339,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    try {
     await ensureReservationIntegrity();
+    } catch (migErr) {
+      console.warn("[rooms] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     const auth = await getAuthContext(req);
     checkWritePermission(auth, { staffPermissionKey: "rooms" });

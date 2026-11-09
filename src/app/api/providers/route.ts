@@ -114,7 +114,11 @@ async function ensureProviderColumns(): Promise<void> {
 }
 
 export async function GET(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[providers] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     await ensureDatabase();
 
@@ -178,7 +182,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    try {
     await ensureNotNullableDefaults();
+    } catch (migErr) {
+      console.warn("[providers] ensureNotNullableDefaults failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
   try {
     // Ensure ALL Provider columns exist BEFORE any Prisma query.
     // This runs ALTER TABLE for each missing column via pg.Client with SSL.
