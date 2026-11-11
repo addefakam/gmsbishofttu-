@@ -55,7 +55,26 @@ const MAX_ATTEMPTS = 3;
 
 export const PLACEHOLDER_ROOM_ID = "deleted-room-placeholder";
 
+// SHARED CACHE: if any ensure* helper already ran successfully on this
+// instance, skip ALL others. This prevents 4-5 separate DB connections
+// per request — the first helper to run does ALL the work, the rest
+// just check this flag and return instantly.
+declare global {
+  // eslint-disable-next-line no-var
+  var __ghmsSchemaChecked: boolean | undefined;
+}
+function isSchemaChecked(): boolean {
+  return typeof globalThis !== "undefined" && globalThis.__ghmsSchemaChecked === true;
+}
+function markSchemaChecked(): void {
+  if (typeof globalThis !== "undefined") {
+    globalThis.__ghmsSchemaChecked = true;
+  }
+}
+
 export async function ensureReservationIntegrity(): Promise<void> {
+  // FAST PATH: if any schema helper already ran, skip entirely (0ms)
+  if (isSchemaChecked()) return;
   if (_checked) return;
   if (_promise) { await _promise; return; }
 
@@ -67,6 +86,7 @@ export async function ensureReservationIntegrity(): Promise<void> {
       // Then do the direct integrity fix via pg.Client.
       await repairReservationIntegrity();
       _checked = true;
+      markSchemaChecked(); // Mark for ALL helpers to skip
     } catch (err) {
       _attempts++;
       console.error(

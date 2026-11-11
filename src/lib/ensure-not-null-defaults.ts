@@ -35,6 +35,18 @@ let _backfillPromise: Promise<void> | null = null;
 let _backfillAttempts = 0;
 const MAX_BACKFILL_ATTEMPTS = 3;
 
+
+// SHARED CACHE: if ensureReservationIntegrity (or any other helper) already
+// ran successfully on this instance, skip entirely. This prevents 4-5
+// separate DB connections per request.
+declare global {
+  // eslint-disable-next-line no-var
+  var __ghmsSchemaChecked: boolean | undefined;
+}
+function isSchemaChecked(): boolean {
+  return typeof globalThis !== "undefined" && globalThis.__ghmsSchemaChecked === true;
+}
+
 export async function ensureNotNullableDefaults(): Promise<void> {
   if (_backfillChecked) return;
   if (_backfillPromise) { await _backfillPromise; return; }
