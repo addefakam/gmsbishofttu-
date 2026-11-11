@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const client = new Client({
       connectionString: process.env.DATABASE_URL,
       connectionTimeoutMillis: 30000,
-      ssl: needsSsl() ? { rejectUnauthorized: false } : undefined,
+      ssl: needsSsl() ? { rejectUnauthorized: true } : undefined,
     });
 
     let user: {
@@ -223,32 +223,60 @@ export async function POST(req: NextRequest) {
       `);
       console.log("[auth] User + Provider tables ensured (with proper enum types).");
 
-      // Seed admin user if not exists
-      await client.query(`
-        INSERT INTO "User" ("id", "username", "password", "name", "role", "permissions", "isActive", "createdAt", "updatedAt")
-        VALUES ('admin-001', 'admin', 'Admin@2024', 'System Administrator', 'SUPERUSER', '[]', true, NOW(), NOW())
-        ON CONFLICT ("username") DO NOTHING
-      `);
-      console.log("[auth] Admin user ensured.");
-
-      // Seed default POLICE admin user if not exists.
-      // The police app (/police-app) needs a POLICE role account to log in.
-      // Without this seed, police users have no way to log in (the SUPERUSER
-      // 'admin' account can access /police-app too, but police-only flows
-      // need a true POLICE role with policeRank='ADMIN').
+      // ── SECURITY FIX (C-01 + C-05): No more hardcoded credentials ──
       //
-      // Default credentials:
-      //   username: police
-      //   password: Police@2024
-      // (Same backward-compat plain-text format as the SUPERUSER seed —
-      // verifyPassword() handles both plain-text and bcrypt-hashed passwords.
-      // The auth route auto-migrates to bcrypt on first successful login.)
-      await client.query(`
-        INSERT INTO "User" ("id", "username", "password", "name", "role", "permissions", "policeRank", "jurisdictionType", "isActive", "createdAt", "updatedAt")
-        VALUES ('police-admin-001', 'police', 'Police@2024', 'Police Administrator', 'POLICE', '[]', 'ADMIN', 'CITY', true, NOW(), NOW())
-        ON CONFLICT ("username") DO NOTHING
-      `);
-      console.log("[auth] Police admin user ensured.");
+      // Previously, the admin + police users were seeded with hardcoded
+      // plain-text passwords ('Admin@2024', 'Police@2024') on EVERY login
+      // attempt. Since the repo is public on GitHub, anyone could read
+      // these credentials and log in as SUPERUSER or POLICE ADMIN.
+      //
+      // Now: admin/police users are seeded ONLY from environment variables:
+      //   - INITIAL_ADMIN_USERNAME (default: admin)
+      //   - INITIAL_ADMIN_PASSWORD (REQUIRED in production, no default)
+      //   - INITIAL_POLICE_USERNAME (default: police)
+      //   - INITIAL_POLICE_PASSWORD (REQUIRED in production, no default)
+      //
+      // Passwords are bcrypt-hashed at creation time (never plain text).
+      // If the env vars are not set, no seed users are created — the
+      // system admin must create the first account via a secure setup script.
+      //
+      // The seeding is idempotent (ON CONFLICT DO NOTHING) so it only
+      // creates the user if they don't already exist.
+      try {
+        const { hashPassword } = await import("@/lib/auth-utils");
+
+        const adminUsername = process.env.INITIAL_ADMIN_USERNAME || "admin";
+        const adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+        if (adminPassword) {
+          const hashedAdmin = await hashPassword(adminPassword);
+          await client.query(
+            `INSERT INTO "User" ("id", "username", "password", "name", "role", "permissions", "isActive", "createdAt", "updatedAt")
+             SELECT 'admin-001', $1, $2, 'System Administrator', 'SUPERUSER', '[]', true, NOW(), NOW()
+             WHERE NOT EXISTS (SELECT 1 FROM "User" WHERE "username" = $1)`,
+            [adminUsername, hashedAdmin]
+          );
+          console.log("[auth] Admin user ensured (from INITIAL_ADMIN_PASSWORD env var).");
+        } else if (process.env.NODE_ENV === "production") {
+          console.warn("[auth] INITIAL_ADMIN_PASSWORD not set — no admin user seeded. Use the setup script to create the first admin.");
+        }
+
+        const policeUsername = process.env.INITIAL_POLICE_USERNAME || "police";
+        const policePassword = process.env.INITIAL_POLICE_PASSWORD;
+        if (policePassword) {
+          const hashedPolice = await hashPassword(policePassword);
+          await client.query(
+            `INSERT INTO "User" ("id", "username", "password", "name", "role", "permissions", "policeRank", "jurisdictionType", "isActive", "createdAt", "updatedAt")
+             SELECT 'police-admin-001', $1, $2, 'Police Administrator', 'POLICE', '[]', 'ADMIN', 'CITY', true, NOW(), NOW()
+             WHERE NOT EXISTS (SELECT 1 FROM "User" WHERE "username" = $1)`,
+            [policeUsername, hashedPolice]
+          );
+          console.log("[auth] Police admin user ensured (from INITIAL_POLICE_PASSWORD env var).");
+        } else if (process.env.NODE_ENV === "production") {
+          console.warn("[auth] INITIAL_POLICE_PASSWORD not set — no police user seeded.");
+        }
+      } catch (seedErr) {
+        console.warn("[auth] User seeding failed (non-blocking):", seedErr instanceof Error ? seedErr.message : seedErr);
+      }
 
       // Run the FULL database migration (creates ALL 30+ tables with ALL
       // columns). This runs via init-db.ts which uses pg.Client with SSL.
@@ -304,12 +332,13 @@ export async function POST(req: NextRequest) {
     } catch (dbErr) {
       try { await client.end(); } catch {}
       const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+      // SECURITY FIX (H-07): Don't leak raw DB errors to the client.
+      // Log full details server-side only; return generic message to user.
       console.error("[auth] Database error:", msg);
       console.error("[auth] DATABASE_URL hostname:", (process.env.DATABASE_URL || "").split("@").pop()?.split("/")[0] || "unknown");
       console.error("[auth] DATABASE_URL has sslmode:", (process.env.DATABASE_URL || "").includes("sslmode"));
-      // Return the actual error message (not the Amharic text) so we can debug
       return NextResponse.json(
-        { error: `DB Error: ${msg}` },
+        { error: "Login temporarily unavailable. Please try again later." },
         { status: 503 }
       );
     }
@@ -330,22 +359,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Auto-migrate: hash plain-text passwords in background
-    if (!user.password.startsWith("$2")) {
-      hashPassword(password).then(async (hashed) => {
-        try {
-          const { Client } = await import("pg");
-          const c = new Client({
-            connectionString: process.env.DATABASE_URL,
-            connectionTimeoutMillis: 30000,
-            ssl: needsSsl() ? { rejectUnauthorized: false } : undefined,
-          });
-          await c.connect();
-          await c.query(`UPDATE "User" SET "password" = $1 WHERE "id" = $2`, [hashed, user!.id]);
-          await c.end();
-        } catch {}
-      });
-    }
+    // SECURITY FIX (C-05): Removed plain-text auto-migration.
+    // verifyPassword() now REJECTS non-bcrypt passwords.
+    // Users with plain-text passwords must reset via the password reset flow.
 
     const policeRank = user.policeRank || "";
 

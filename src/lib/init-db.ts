@@ -1086,7 +1086,7 @@ async function execViaPg(sql: string, params?: unknown[]): Promise<void> {
   const client = new Client({
     connectionString: url,
     connectionTimeoutMillis: 30000,
-    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+    ssl: needsSsl ? { rejectUnauthorized: true } : undefined,
   });
   try {
     await client.connect();
@@ -1231,7 +1231,7 @@ export async function ensureDatabase(): Promise<void> {
       const client = new Client({
         connectionString,
         connectionTimeoutMillis: 30000,
-        ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+        ssl: needsSsl ? { rejectUnauthorized: true } : undefined,
       });
       await client.connect();
       console.log("[init-db] pg Client connected successfully.");
@@ -1339,7 +1339,7 @@ export async function ensureDatabase(): Promise<void> {
 
       // Seed SUPERUSER
       console.log("[init-db] Seeding SUPERUSER...");
-      const hashed = await bcrypt.hash("Admin@2024", 12);
+      const hashed = await bcrypt.hash(process.env.INITIAL_ADMIN_PASSWORD || "", 12);
       await client.query(
         `INSERT INTO "User" ("id","username","password","name","role","permissions","policeRank","createdAt","updatedAt")
          SELECT 'su-admin-001','admin',$1,'System Administrator','SUPERUSER','[]','',NOW(),NOW()
@@ -1439,7 +1439,7 @@ export async function ensureDatabase(): Promise<void> {
       // Seed SUPERUSER via Prisma
       const prisma2 = new PrismaClient({ log: ["warn", "error"] });
       try {
-        const hashed = await bcrypt.hash("Admin@2024", 12);
+        const hashed = await bcrypt.hash(process.env.INITIAL_ADMIN_PASSWORD || "", 12);
         await prisma2.$executeRawUnsafe(
           `INSERT INTO "User" ("id","username","password","name","role","permissions","policeRank","createdAt","updatedAt")
            SELECT 'su-admin-001','admin',$1,'System Administrator','SUPERUSER','[]','',NOW(),NOW()

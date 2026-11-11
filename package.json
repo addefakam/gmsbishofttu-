@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "npx prisma db push --accept-data-loss && prisma generate && node scripts/fix-prisma-sql.js && next build",
+    "build": "prisma generate && node scripts/fix-prisma-sql.js && next build",
     "postinstall": "prisma generate && node scripts/fix-prisma-sql.js",
     "start": "next start",
     "lint": "eslint .",

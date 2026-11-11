@@ -66,15 +66,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Auto-hash plain text passwords
-    if (!secondUser.password.startsWith("$2")) {
-      const { hashPassword } = await import("@/lib/auth-utils");
-      const hashed = await hashPassword(password);
-      await db.user.update({
-        where: { id: secondUser.id },
-        data: { password: hashed },
-      });
-    }
+    // SECURITY FIX (C-05): Removed plain-text auto-migration.
+    // verifyPassword() now REJECTS non-bcrypt passwords.
+    // If a user has a plain-text password, they must reset it via
+    // the password reset flow (admin generates a reset link).
 
     // ── 4. Validate role combination: one must be SUPERUSER, other must be POLICE(ADMIN) ──
     const primaryRole = primaryPayload.role;

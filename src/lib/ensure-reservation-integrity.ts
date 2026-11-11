@@ -55,7 +55,26 @@ const MAX_ATTEMPTS = 3;
 
 export const PLACEHOLDER_ROOM_ID = "deleted-room-placeholder";
 
+// SHARED CACHE: if any ensure* helper already ran successfully on this
+// instance, skip ALL others. This prevents 4-5 separate DB connections
+// per request — the first helper to run does ALL the work, the rest
+// just check this flag and return instantly.
+declare global {
+  // eslint-disable-next-line no-var
+  var __ghmsSchemaChecked: boolean | undefined;
+}
+function isSchemaChecked(): boolean {
+  return typeof globalThis !== "undefined" && globalThis.__ghmsSchemaChecked === true;
+}
+function markSchemaChecked(): void {
+  if (typeof globalThis !== "undefined") {
+    globalThis.__ghmsSchemaChecked = true;
+  }
+}
+
 export async function ensureReservationIntegrity(): Promise<void> {
+  // FAST PATH: if any schema helper already ran, skip entirely (0ms)
+  if (isSchemaChecked()) return;
   if (_checked) return;
   if (_promise) { await _promise; return; }
 
@@ -67,6 +86,7 @@ export async function ensureReservationIntegrity(): Promise<void> {
       // Then do the direct integrity fix via pg.Client.
       await repairReservationIntegrity();
       _checked = true;
+      markSchemaChecked(); // Mark for ALL helpers to skip
     } catch (err) {
       _attempts++;
       console.error(
@@ -95,7 +115,7 @@ async function repairReservationIntegrity(): Promise<void> {
   const client = new Client({
     connectionString: url,
     connectionTimeoutMillis: 10000,
-    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+    ssl: needsSsl ? { rejectUnauthorized: true } : undefined,
   });
 
   try {
@@ -337,7 +357,7 @@ async function repairReservationIntegrity(): Promise<void> {
 
     // Step 9c: Ensure Room table has all required columns too (since
     // prisma.room.update() is called during checkout to set status=AVAILABLE)
-    const roomColumns: Array<[string, string]> = [
+    const roomExtraColumns: Array<[string, string]> = [
       ["pricePerNightWeekend", "DOUBLE PRECISION"],
       ["image", "TEXT"],
       ["amenities", "TEXT NOT NULL DEFAULT ''"],
@@ -345,11 +365,67 @@ async function repairReservationIntegrity(): Promise<void> {
       ["status", "RoomStatus NOT NULL DEFAULT 'AVAILABLE'"],
       ["type", "RoomType NOT NULL DEFAULT 'SINGLE'"],
     ];
-    for (const [col, def] of roomColumns) {
+    for (const [col, def] of roomExtraColumns) {
       try {
         await client.query(`ALTER TABLE "Room" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
       } catch (colErr) {
         console.warn(`[ensureReservationIntegrity] Could not add Room.${col}:`, colErr instanceof Error ? colErr.message : colErr);
+      }
+    }
+
+    // Step 9d: Ensure GroupBooking table + ALL columns exist.
+    // prisma.groupBooking.findMany() fails with "column does not exist"
+    // if discountType, discountAmount, or other recently-added columns
+    // are missing. Also creates the table itself if it doesn't exist.
+    try {
+      // Create the GroupBookingStatus enum if missing
+      await client.query(`DO $$ BEGIN CREATE TYPE "GroupBookingStatus" AS ENUM ('PENDING','CONFIRMED','IN_PROGRESS','COMPLETED','CANCELLED'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
+    } catch {}
+
+    // Create the GroupBooking table if it doesn't exist
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "GroupBooking" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "name" TEXT NOT NULL,
+          "contactName" TEXT NOT NULL DEFAULT '',
+          "contactPhone" TEXT NOT NULL DEFAULT '',
+          "contactEmail" TEXT NOT NULL DEFAULT '',
+          "startDate" TEXT NOT NULL,
+          "endDate" TEXT NOT NULL,
+          "notes" TEXT NOT NULL DEFAULT '',
+          "status" "GroupBookingStatus" NOT NULL DEFAULT 'PENDING',
+          "totalRooms" INTEGER NOT NULL DEFAULT 0,
+          "totalGuests" INTEGER NOT NULL DEFAULT 0,
+          "totalCost" DOUBLE PRECISION NOT NULL DEFAULT 0,
+          "discountType" TEXT NOT NULL DEFAULT 'AMOUNT',
+          "discountAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+          "providerId" TEXT NOT NULL,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    } catch (tableErr) {
+      console.warn("[ensureReservationIntegrity] Could not create GroupBooking table:", tableErr instanceof Error ? tableErr.message : tableErr);
+    }
+
+    // Add any missing columns to existing GroupBooking table
+    const groupBookingColumns: Array<[string, string]> = [
+      ["contactName", "TEXT NOT NULL DEFAULT ''"],
+      ["contactPhone", "TEXT NOT NULL DEFAULT ''"],
+      ["contactEmail", "TEXT NOT NULL DEFAULT ''"],
+      ["notes", "TEXT NOT NULL DEFAULT ''"],
+      ["totalRooms", "INTEGER NOT NULL DEFAULT 0"],
+      ["totalGuests", "INTEGER NOT NULL DEFAULT 0"],
+      ["totalCost", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
+      ["discountType", "TEXT NOT NULL DEFAULT 'AMOUNT'"],
+      ["discountAmount", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
+    ];
+    for (const [col, def] of groupBookingColumns) {
+      try {
+        await client.query(`ALTER TABLE "GroupBooking" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
+      } catch (colErr) {
+        console.warn(`[ensureReservationIntegrity] Could not add GroupBooking.${col}:`, colErr instanceof Error ? colErr.message : colErr);
       }
     }
 

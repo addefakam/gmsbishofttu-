@@ -44,6 +44,18 @@ const SETTINGS_COLUMNS: Array<[string, string]> = [
   ["updatedAt", "TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP"],
 ];
 
+
+// SHARED CACHE: if ensureReservationIntegrity (or any other helper) already
+// ran successfully on this instance, skip entirely. This prevents 4-5
+// separate DB connections per request.
+declare global {
+  // eslint-disable-next-line no-var
+  var __ghmsSchemaChecked: boolean | undefined;
+}
+function isSchemaChecked(): boolean {
+  return typeof globalThis !== "undefined" && globalThis.__ghmsSchemaChecked === true;
+}
+
 export async function ensureSettingsColumns(): Promise<void> {
   if (_settingsChecked) return;
   if (_settingsPromise) { await _settingsPromise; return; }
@@ -92,7 +104,7 @@ async function addSettingsColumnsDirectly(): Promise<void> {
   const client = new Client({
     connectionString: url,
     connectionTimeoutMillis: 5000,
-    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+    ssl: needsSsl ? { rejectUnauthorized: true } : undefined,
   });
 
   try {
