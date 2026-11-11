@@ -1,4 +1,3 @@
-import { createHash } from "crypto";
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 
@@ -13,29 +12,63 @@ export async function verifyPassword(
   plainText: string,
   hashed: string
 ): Promise<boolean> {
-  // Backward compatibility: if password is NOT hashed (plain text), compare directly
+  // SECURITY FIX (C-05): Removed plain-text backward compatibility.
+  // All passwords MUST be bcrypt-hashed. If a password is not hashed
+  // (doesn't start with $2), we reject it — no plain-text comparison.
+  // This prevents timing attacks and ensures no plain-text passwords
+  // are accepted.
   if (!hashed.startsWith("$2")) {
-    return plainText === hashed;
+    console.error("[auth] REJECTED login — password is not bcrypt-hashed. User must reset password.");
+    return false;
   }
   return bcrypt.compare(plainText, hashed);
 }
 
 // ── JWT token management ──
+
+/**
+ * SECURITY FIX (C-02): JWT_SECRET is now REQUIRED in production.
+ *
+ * Previously, the secret was derived from DATABASE_URL as a fallback.
+ * This was insecure because:
+ *   1. DATABASE_URL was committed to git history (C-03)
+ *   2. Anyone with the DB URL could forge JWT tokens
+ *   3. The "derived" secret was predictable
+ *
+ * Now: if JWT_SECRET is not set (or too short), we throw immediately.
+ * In development, we generate a random ephemeral secret (per process)
+ * so the app still runs locally without configuration.
+ *
+ * In production (NODE_ENV=production), the app WILL NOT START without
+ * a proper JWT_SECRET (32+ characters).
+ */
 function getJWTSecret(): Uint8Array {
   const secret = process.env.JWT_SECRET;
+
   if (secret && secret.length >= 32) {
     return new TextEncoder().encode(secret);
   }
-  // Fallback: derive from DATABASE_URL — works in production without
-  // explicitly setting JWT_SECRET. This is less secure but ensures
-  // the system works out of the box.
-  const dbUrl = process.env.DATABASE_URL || "ghms-fallback-secret-key";
-  const derived = createHash("sha256").update(`ghms-jwt:${dbUrl}`).digest("hex");
-  if (process.env.NODE_ENV === "production" && !secret) {
-    console.warn("[auth] JWT_SECRET not set — using derived secret. Set JWT_SECRET (32+ chars) for better security.");
+
+  // Development-only fallback: generate a random ephemeral secret.
+  // This means tokens don't survive a server restart in dev mode,
+  // but that's acceptable for local development.
+  if (process.env.NODE_ENV !== "production") {
+    if (!_devSecret) {
+      _devSecret = require("crypto").randomBytes(32);
+      console.warn("[auth] JWT_SECRET not set — using random dev secret (tokens won't survive restart).");
+    }
+    return _devSecret;
   }
-  return new TextEncoder().encode(derived);
+
+  // PRODUCTION: hard fail — no fallback, no derived secret
+  throw new Error(
+    "FATAL: JWT_SECRET environment variable is required in production (32+ characters). " +
+    "Generate one with: openssl rand -base64 48"
+  );
 }
+
+// Cache for dev-mode ephemeral secret
+let _devSecret: Uint8Array | null = null;
 
 export interface JWTPayload {
   userId: string;

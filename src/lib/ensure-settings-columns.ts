@@ -92,7 +92,7 @@ async function addSettingsColumnsDirectly(): Promise<void> {
   const client = new Client({
     connectionString: url,
     connectionTimeoutMillis: 5000,
-    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+    ssl: needsSsl ? { rejectUnauthorized: true } : undefined,
   });
 
   try {
