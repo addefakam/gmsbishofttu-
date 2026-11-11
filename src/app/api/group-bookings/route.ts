@@ -7,11 +7,71 @@ import { isValidPhone, isValidEmail } from "@/lib/utils";
 import { calculateStayTotal } from "@/lib/room-pricing";
 
 import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
+
+/**
+ * Ensures the GroupBooking table + GroupBookingStatus enum exist.
+ * Uses Prisma's $executeRawUnsafe (the app's existing DB connection)
+ * instead of a separate pg.Client — more reliable, no SSL handshake.
+ * Called directly in this route because ensureReservationIntegrity's
+ * GroupBooking creation can fail silently (caught by try/catch).
+ */
+async function ensureGroupBookingTable(): Promise<void> {
+  try {
+    // Create enum type
+    await db.$executeRawUnsafe(`DO $$ BEGIN CREATE TYPE "GroupBookingStatus" AS ENUM ('PENDING','CONFIRMED','IN_PROGRESS','COMPLETED','CANCELLED'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
+  } catch {}
+  try {
+    // Create table if not exists
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "GroupBooking" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "name" TEXT NOT NULL,
+        "contactName" TEXT NOT NULL DEFAULT '',
+        "contactPhone" TEXT NOT NULL DEFAULT '',
+        "contactEmail" TEXT NOT NULL DEFAULT '',
+        "startDate" TEXT NOT NULL,
+        "endDate" TEXT NOT NULL,
+        "notes" TEXT NOT NULL DEFAULT '',
+        "status" "GroupBookingStatus" NOT NULL DEFAULT 'PENDING',
+        "totalRooms" INTEGER NOT NULL DEFAULT 0,
+        "totalGuests" INTEGER NOT NULL DEFAULT 0,
+        "totalCost" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "discountType" TEXT NOT NULL DEFAULT 'AMOUNT',
+        "discountAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "providerId" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+  } catch {}
+  // Add missing columns
+  const cols: Array<[string, string]> = [
+    ["discountType", "TEXT NOT NULL DEFAULT 'AMOUNT'"],
+    ["discountAmount", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
+    ["contactName", "TEXT NOT NULL DEFAULT ''"],
+    ["contactPhone", "TEXT NOT NULL DEFAULT ''"],
+    ["contactEmail", "TEXT NOT NULL DEFAULT ''"],
+    ["notes", "TEXT NOT NULL DEFAULT ''"],
+  ];
+  for (const [col, def] of cols) {
+    try {
+      await db.$executeRawUnsafe(`ALTER TABLE "GroupBooking" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
+    } catch {}
+  }
+}
+
 export async function GET(req: NextRequest) {
     try {
     await ensureReservationIntegrity();
     } catch (migErr) {
       console.warn("[group-bookings] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    // Direct table creation — bypasses ensureReservationIntegrity's
+    // silent catch blocks. Uses the app's existing Prisma connection.
+    try {
+      await ensureGroupBookingTable();
+    } catch (e) {
+      console.warn("[group-bookings] ensureGroupBookingTable failed:", e instanceof Error ? e.message : e);
     }
   try {
     // ensureNewTables() internally calls ensureOwnerTables() which creates
@@ -84,6 +144,12 @@ export async function POST(req: NextRequest) {
     await ensureReservationIntegrity();
     } catch (migErr) {
       console.warn("[group-bookings] ensureReservationIntegrity failed (non-blocking):", migErr instanceof Error ? migErr.message : migErr);
+    }
+    // Direct table creation — same as GET handler
+    try {
+      await ensureGroupBookingTable();
+    } catch (e) {
+      console.warn("[group-bookings] ensureGroupBookingTable failed:", e instanceof Error ? e.message : e);
     }
   try {
     await ensureNewTables();
