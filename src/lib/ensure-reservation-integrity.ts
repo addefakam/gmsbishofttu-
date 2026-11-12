@@ -51,7 +51,7 @@ import { ensureDatabase } from "./init-db";
 let _checked = false;
 let _promise: Promise<void> | null = null;
 let _attempts = 0;
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 1;
 
 export const PLACEHOLDER_ROOM_ID = "deleted-room-placeholder";
 
@@ -80,10 +80,12 @@ export async function ensureReservationIntegrity(): Promise<void> {
 
   _promise = (async () => {
     try {
-      // First, make sure ensureDatabase() has run (creates tables/columns).
-      await ensureDatabase();
-
-      // Then do the direct integrity fix via pg.Client.
+      // NOTE: We intentionally DO NOT call ensureDatabase() here.
+      // ensureDatabase() opens a pg.Client with 30s timeout and runs
+      // ~200 DDL statements — this causes Vercel function timeouts
+      // (10s limit on hobby tier). Instead, repairReservationIntegrity()
+      // does ALL the necessary table/column fixes directly with a
+      // short 3s connection timeout.
       await repairReservationIntegrity();
       _checked = true;
       markSchemaChecked(); // Mark for ALL helpers to skip
@@ -94,8 +96,11 @@ export async function ensureReservationIntegrity(): Promise<void> {
         err instanceof Error ? err.message : err
       );
       if (_attempts >= MAX_ATTEMPTS) {
-        console.error(`[ensureReservationIntegrity] Giving up after ${MAX_ATTEMPTS} attempts — orphan reservations may still cause Prisma errors.`);
+        console.error(`[ensureReservationIntegrity] Giving up after ${MAX_ATTEMPTS} attempts — schema fixes skipped.`);
         _checked = true;
+        // CRITICAL: mark as checked even on failure so subsequent helpers
+        // don't retry (which would cause additional timeouts)
+        markSchemaChecked();
       }
       _promise = null;
     }
@@ -114,7 +119,7 @@ async function repairReservationIntegrity(): Promise<void> {
 
   const client = new Client({
     connectionString: url,
-    connectionTimeoutMillis: 10000,
+    connectionTimeoutMillis: 3000,
     ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
   });
 
