@@ -115,7 +115,7 @@ async function repairReservationIntegrity(): Promise<void> {
   const client = new Client({
     connectionString: url,
     connectionTimeoutMillis: 10000,
-    ssl: needsSsl ? { rejectUnauthorized: true } : undefined,
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
   });
 
   try {

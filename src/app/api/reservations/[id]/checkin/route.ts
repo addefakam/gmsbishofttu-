@@ -24,7 +24,13 @@ export async function POST(
     const { id } = await params;
     const { providerId } = getProviderFilter(auth);
 
-    const reservation = await db.reservation.findFirst({ where: { id, providerId } });
+    const reservation = await db.reservation.findFirst({
+      where: { id, providerId },
+      include: {
+        guest: { select: { id: true, name: true, phone: true } },
+        room: { select: { id: true, number: true, name: true, status: true } },
+      },
+    });
     if (!reservation) {
       return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
     }
@@ -119,6 +125,7 @@ export async function POST(
         },
         include: {
           guest: { select: { id: true, name: true, phone: true } },
+          room: { select: { id: true, number: true, name: true, status: true } },
         },
       });
 
@@ -154,13 +161,19 @@ export async function POST(
     });
 
     // Background: run anomaly detection on check-in (fire-and-forget)
-    runAnomalyDetection({
-      guestName: updated.guest?.name ?? "",
-      guestPhone: updated.guest?.phone ?? "",
-      providerId,
-      reservationId: id,
-      trigger: "CHECKIN",
-    }).catch(() => {});
+    // Wrapped in try/catch in case the function throws synchronously
+    // (before returning a Promise — .catch() only catches async rejections)
+    try {
+      await runAnomalyDetection({
+        guestName: updated.guest?.name ?? "",
+        guestPhone: updated.guest?.phone ?? "",
+        providerId,
+        reservationId: id,
+        trigger: "CHECKIN",
+      }).catch(() => {});
+    } catch {
+      // Non-blocking — anomaly detection is best-effort
+    }
 
     // Note: Suspect matching now runs at RESERVATION CREATION time (not check-in)
     // so the alert appears in the suspect list as soon as the reservation is

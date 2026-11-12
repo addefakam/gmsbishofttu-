@@ -72,7 +72,7 @@ async function runAllFixesInOneConnection(): Promise<void> {
     // Short timeout — if we can't connect in 5s, skip (the app still
     // works, queries will fail with a proper error message)
     connectionTimeoutMillis: 5000,
-    ssl: needsSsl ? { rejectUnauthorized: true } : undefined,
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
   });
 
   try {

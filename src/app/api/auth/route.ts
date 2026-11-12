@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const client = new Client({
       connectionString: process.env.DATABASE_URL,
       connectionTimeoutMillis: 30000,
-      ssl: needsSsl() ? { rejectUnauthorized: true } : undefined,
+      ssl: needsSsl() ? { rejectUnauthorized: false } : undefined,
     });
 
     let user: {

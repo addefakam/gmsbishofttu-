@@ -168,7 +168,7 @@ async function convertWithPgClient(): Promise<void> {
     // first). If pg.Client can't connect in 5s, give up and let the
     // outer catch log it.
     connectionTimeoutMillis: 5000,
-    ssl: needsSsl ? { rejectUnauthorized: true } : undefined,
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
   });
 
   try {

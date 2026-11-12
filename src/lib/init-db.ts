@@ -1086,7 +1086,7 @@ async function execViaPg(sql: string, params?: unknown[]): Promise<void> {
   const client = new Client({
     connectionString: url,
     connectionTimeoutMillis: 30000,
-    ssl: needsSsl ? { rejectUnauthorized: true } : undefined,
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
   });
   try {
     await client.connect();
@@ -1231,7 +1231,7 @@ export async function ensureDatabase(): Promise<void> {
       const client = new Client({
         connectionString,
         connectionTimeoutMillis: 30000,
-        ssl: needsSsl ? { rejectUnauthorized: true } : undefined,
+        ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
       });
       await client.connect();
       console.log("[init-db] pg Client connected successfully.");

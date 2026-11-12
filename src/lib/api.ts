@@ -83,20 +83,26 @@ export async function req(url: string, opts: RequestInit = {}) {
 
     const t = await res.text().catch(() => "");
     // Try to extract a clean error message from JSON response.
-    // IMPORTANT: If the body is empty (e.g. Vercel function timeout or
-    // unhandled server error), JSON.parse("") throws "Unexpected end of
-    // JSON input" — which then becomes the error message shown to the
-    // user. That's confusing. Instead, skip parsing when body is empty
-    // and throw a clean "Request failed: STATUS" message.
+    // IMPORTANT: If the server returns plain text (e.g. Vercel's
+    // "An error occurred" page), JSON.parse() throws "Unexpected token"
+    // — which becomes the error message shown to the user. That's
+    // confusing. Instead, check if the response is valid JSON first,
+    // and if not, throw a clean status-based error.
     if (t && t.trim()) {
-      try {
-        const j = JSON.parse(t);
-        if (j.error) throw new Error(j.error);
-        if (j.message) throw new Error(j.message);
-      } catch (e) {
-        if (e instanceof Error && e.message !== t) throw e; // Re-throw our extracted error
+      // Only try JSON parse if the body looks like JSON (starts with { or [)
+      const trimmed = t.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        try {
+          const j = JSON.parse(trimmed);
+          if (j.error) throw new Error(j.error);
+          if (j.message) throw new Error(j.message);
+        } catch (e) {
+          if (e instanceof Error && e.message !== t) throw e;
+        }
       }
-      throw new Error(t || `Request failed: ${res.status}`);
+      // If it doesn't look like JSON, it's probably a Vercel error page
+      // or plain text — throw a clean message instead of the raw text
+      throw new Error(`Request failed: ${res.status}`);
     }
     // Empty body — throw a clean status-based error.
     throw new Error(`Request failed: ${res.status}`);
