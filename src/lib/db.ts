@@ -4,17 +4,30 @@ let _db: PrismaClient | null = null;
 
 function getClient(): PrismaClient {
   if (!_db) {
-    if (!process.env.DATABASE_URL) {
+    const url = process.env.DATABASE_URL;
+    if (!url) {
       throw new Error("[db] DATABASE_URL is not set.");
     }
-    // Use DATABASE_URL as-is. Do NOT override with datasources — the
-    // previous override (pgbouncer=true&prepared_statements=false) was
-    // causing connection failures on Vercel when combined with Neon's
-    // own pooler. The "cached plan must not change result type" (0A000)
-    // error is now handled by the shared cache in ensure* helpers — they
-    // only run ALTER TABLE on the FIRST request, so prepared statements
-    // are safe on all subsequent requests.
-    _db = new PrismaClient({ log: ["warn", "error"] });
+
+    // Append prepared_statements=false to prevent the
+    // "cached plan must not change result type" (0A000) error.
+    // This is needed because ensure* helpers run ALTER TABLE at runtime,
+    // which invalidates PostgreSQL's cached prepared statement plans.
+    //
+    // We do NOT add pgbouncer=true — it was causing connection failures
+    // with Neon's pooler. Neon handles pooling server-side.
+    //
+    // We only append if not already present (idempotent).
+    const safeUrl = url.includes("prepared_statements=false")
+      ? url
+      : `${url}${url.includes("?") ? "&" : "?"}prepared_statements=false`;
+
+    _db = new PrismaClient({
+      log: ["warn", "error"],
+      datasources: {
+        db: { url: safeUrl },
+      },
+    });
   }
   return _db;
 }
