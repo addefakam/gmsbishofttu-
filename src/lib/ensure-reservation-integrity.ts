@@ -126,369 +126,177 @@ async function repairReservationIntegrity(): Promise<void> {
   try {
     await client.connect();
 
-    // Step 1: Ensure enum types exist (RoomType, RoomStatus) — needed
-    // before we can INSERT into Room table.
-    try {
-      await client.query(`DO $$ BEGIN CREATE TYPE "RoomType" AS ENUM ('SINGLE','DOUBLE','TWIN','SUITE','DELUXE','KING','STANDARD','STANDARD_SUITE','JUNIOR_SUITE','EXECUTIVE_SUITE','PRESIDENTIAL_SUITE'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
-    } catch {}
-    try {
-      await client.query(`DO $$ BEGIN CREATE TYPE "RoomStatus" AS ENUM ('AVAILABLE','OCCUPIED','MAINTENANCE','RESERVED'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
-    } catch {}
+    // ── BATCH ALL DDL INTO ONE QUERY ──
+    // Previously: 60+ individual queries (each ~50-100ms round-trip = 3-6s)
+    // Now: 1 multi-statement query (~200ms total)
+    // PostgreSQL supports executing multiple statements separated by ; in a
+    // single client.query() call.
+    const BATCH_DDL = `
+      -- Enum types (idempotent — DO $$ EXCEPTION WHEN duplicate)
+      DO $$ BEGIN CREATE TYPE "RoomType" AS ENUM ('SINGLE','DOUBLE','TWIN','SUITE','DELUXE','KING','STANDARD','STANDARD_SUITE','JUNIOR_SUITE','EXECUTIVE_SUITE','PRESIDENTIAL_SUITE'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "RoomStatus" AS ENUM ('AVAILABLE','OCCUPIED','MAINTENANCE','RESERVED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "GroupBookingStatus" AS ENUM ('PENDING','CONFIRMED','IN_PROGRESS','COMPLETED','CANCELLED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "PaymentStatusType" AS ENUM ('PAID','PARTIAL','PENDING'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "PaymentMethodType" AS ENUM ('CASH','TRANSFER','CARD','MOBILE'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+      DO $$ BEGIN CREATE TYPE "ReservationStatus" AS ENUM ('UPCOMING','ACTIVE','COMPLETED','CANCELLED','DELETED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 
-    // Step 2: Ensure the Room table exists with all required columns.
-    // (Older deploys may not have created it, or may have it missing
-    // columns that Prisma expects.)
-    await client.query(`
+      -- Room table (create if missing)
       CREATE TABLE IF NOT EXISTS "Room" (
-        "id" TEXT NOT NULL PRIMARY KEY,
-        "number" TEXT NOT NULL,
-        "name" TEXT NOT NULL,
-        "type" "RoomType" NOT NULL DEFAULT 'SINGLE',
-        "pricePerNight" DOUBLE PRECISION NOT NULL DEFAULT 0,
-        "pricePerNightWeekend" DOUBLE PRECISION,
-        "floor" INTEGER NOT NULL DEFAULT 0,
-        "capacity" INTEGER NOT NULL DEFAULT 1,
-        "status" "RoomStatus" NOT NULL DEFAULT 'AVAILABLE',
-        "amenities" TEXT NOT NULL DEFAULT '',
-        "description" TEXT NOT NULL DEFAULT '',
-        "image" TEXT,
-        "providerId" TEXT NOT NULL DEFAULT '',
+        "id" TEXT NOT NULL PRIMARY KEY, "number" TEXT NOT NULL, "name" TEXT NOT NULL,
+        "type" "RoomType" NOT NULL DEFAULT 'SINGLE', "pricePerNight" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "pricePerNightWeekend" DOUBLE PRECISION, "floor" INTEGER NOT NULL DEFAULT 0,
+        "capacity" INTEGER NOT NULL DEFAULT 1, "status" "RoomStatus" NOT NULL DEFAULT 'AVAILABLE',
+        "amenities" TEXT NOT NULL DEFAULT '', "description" TEXT NOT NULL DEFAULT '',
+        "image" TEXT, "providerId" TEXT NOT NULL DEFAULT '',
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+      );
+      ALTER TABLE "Room" ADD COLUMN IF NOT EXISTS "pricePerNightWeekend" DOUBLE PRECISION;
+      ALTER TABLE "Room" ADD COLUMN IF NOT EXISTS "image" TEXT;
+      ALTER TABLE "Room" ADD COLUMN IF NOT EXISTS "amenities" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "Room" ADD COLUMN IF NOT EXISTS "description" TEXT NOT NULL DEFAULT '';
 
-    // Step 3: Add any missing columns via ALTER TABLE ADD COLUMN IF NOT EXISTS.
-    const roomColumns: Array<[string, string]> = [
-      ["pricePerNightWeekend", "DOUBLE PRECISION"],
-      ["image", "TEXT"],
-      ["amenities", "TEXT NOT NULL DEFAULT ''"],
-      ["description", "TEXT NOT NULL DEFAULT ''"],
-      ["providerId", "TEXT NOT NULL DEFAULT ''"],
-    ];
-    for (const [col, def] of roomColumns) {
-      try {
-        await client.query(`ALTER TABLE "Room" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
-      } catch {}
-    }
+      -- Guest table (create if missing)
+      CREATE TABLE IF NOT EXISTS "Guest" (
+        "id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "phone" TEXT NOT NULL,
+        "email" TEXT NOT NULL DEFAULT '', "idNumber" TEXT NOT NULL DEFAULT '',
+        "notes" TEXT NOT NULL DEFAULT '', "vip" BOOLEAN NOT NULL DEFAULT false,
+        "totalSpent" DOUBLE PRECISION NOT NULL DEFAULT 0, "totalStays" INTEGER NOT NULL DEFAULT 0,
+        "providerId" TEXT, "otpCode" TEXT, "otpExpiresAt" TIMESTAMP(3),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      ALTER TABLE "Guest" ADD COLUMN IF NOT EXISTS "otpCode" TEXT;
+      ALTER TABLE "Guest" ADD COLUMN IF NOT EXISTS "otpExpiresAt" TIMESTAMP(3);
+      ALTER TABLE "Guest" ADD COLUMN IF NOT EXISTS "email" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "Guest" ADD COLUMN IF NOT EXISTS "phone" TEXT NOT NULL DEFAULT '';
+      DO $$ BEGIN ALTER TABLE "Guest" ALTER COLUMN "providerId" DROP NOT NULL; EXCEPTION WHEN OTHERS THEN null; END $$;
 
-    // Step 4: Ensure the Reservation table exists too (paranoid).
-    await client.query(`
+      -- Reservation table (create if missing)
       CREATE TABLE IF NOT EXISTS "Reservation" (
-        "id" TEXT NOT NULL PRIMARY KEY,
-        "guestId" TEXT NOT NULL,
-        "roomId" TEXT,
-        "checkIn" TEXT NOT NULL DEFAULT '',
-        "checkOut" TEXT NOT NULL DEFAULT '',
-        "nights" INTEGER NOT NULL DEFAULT 1,
-        "roomRate" DOUBLE PRECISION NOT NULL DEFAULT 0,
-        "totalCost" DOUBLE PRECISION NOT NULL DEFAULT 0,
-        "paidAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "id" TEXT NOT NULL PRIMARY KEY, "guestId" TEXT NOT NULL, "roomId" TEXT,
+        "checkIn" TEXT NOT NULL DEFAULT '', "checkOut" TEXT NOT NULL DEFAULT '',
+        "nights" INTEGER NOT NULL DEFAULT 1, "roomRate" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "totalCost" DOUBLE PRECISION NOT NULL DEFAULT 0, "paidAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
         "balance" DOUBLE PRECISION NOT NULL DEFAULT 0,
         "paymentStatus" "PaymentStatusType" NOT NULL DEFAULT 'PENDING',
         "status" "ReservationStatus" NOT NULL DEFAULT 'UPCOMING',
-        "notes" TEXT NOT NULL DEFAULT '',
-        "actualCheckIn" TIMESTAMP(3),
-        "actualCheckOut" TIMESTAMP(3),
-        "taxAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
-        "discountAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
-        "secondGuestName" TEXT NOT NULL DEFAULT '',
-        "secondGuestPhone" TEXT NOT NULL DEFAULT '',
-        "secondGuestIdNumber" TEXT NOT NULL DEFAULT '',
-        "exceptionallyReserved" BOOLEAN NOT NULL DEFAULT false,
-        "exceptionReason" TEXT NOT NULL DEFAULT '',
-        "providerId" TEXT NOT NULL DEFAULT '',
-        "groupBookingId" TEXT,
+        "notes" TEXT NOT NULL DEFAULT '', "actualCheckIn" TIMESTAMP(3), "actualCheckOut" TIMESTAMP(3),
+        "taxAmount" DOUBLE PRECISION NOT NULL DEFAULT 0, "discountAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "secondGuestName" TEXT NOT NULL DEFAULT '', "secondGuestPhone" TEXT NOT NULL DEFAULT '',
+        "secondGuestIdNumber" TEXT NOT NULL DEFAULT '', "exceptionallyReserved" BOOLEAN NOT NULL DEFAULT false,
+        "exceptionReason" TEXT NOT NULL DEFAULT '', "guestNotes" TEXT NOT NULL DEFAULT '',
+        "providerId" TEXT NOT NULL DEFAULT '', "groupBookingId" TEXT,
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+      );
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "guestNotes" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "exceptionReason" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "exceptionallyReserved" BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "secondGuestName" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "secondGuestPhone" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "secondGuestIdNumber" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "taxAmount" DOUBLE PRECISION NOT NULL DEFAULT 0;
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "discountAmount" DOUBLE PRECISION NOT NULL DEFAULT 0;
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "paidAmount" DOUBLE PRECISION NOT NULL DEFAULT 0;
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "balance" DOUBLE PRECISION NOT NULL DEFAULT 0;
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "groupBookingId" TEXT;
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "actualCheckIn" TIMESTAMP(3);
+      ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "actualCheckOut" TIMESTAMP(3);
 
-    // Step 5: Find a valid providerId for the placeholder Room.
-    // We use the providerId of the first orphan reservation if available,
-    // otherwise the first provider in the DB, otherwise an empty string.
-    let placeholderProviderId = "";
-    try {
-      const providerResult = await client.query(`
-        SELECT "providerId" FROM "Reservation"
-        WHERE "providerId" IS NOT NULL AND "providerId" != ''
-        LIMIT 1
-      `);
-      if (providerResult.rows.length > 0 && providerResult.rows[0].providerId) {
-        placeholderProviderId = providerResult.rows[0].providerId;
-      } else {
-        const anyProvider = await client.query(`SELECT id FROM "Provider" LIMIT 1`);
-        if (anyProvider.rows.length > 0 && anyProvider.rows[0].id) {
-          placeholderProviderId = anyProvider.rows[0].id;
-        }
-      }
-    } catch {}
+      -- User columns
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "email" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phone" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "permissions" TEXT NOT NULL DEFAULT '["reservations","guests"]';
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "policeRank" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN NOT NULL DEFAULT true;
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lastLogin" TIMESTAMP(3);
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "providerId" TEXT;
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "jurisdictionType" TEXT NOT NULL DEFAULT 'CITY';
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "subCity" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "woreda" TEXT NOT NULL DEFAULT '';
 
-    // Step 6: Create the placeholder Room record if it doesn't exist.
-    // This Room acts as a tombstone — orphaned reservations get reassigned
-    // to it instead of being deleted (preserves historical records).
-    try {
-      await client.query(`
-        INSERT INTO "Room" ("id", "number", "name", "type", "pricePerNight", "floor", "capacity", "status", "amenities", "description", "providerId", "createdAt", "updatedAt")
-        SELECT
-          $1, $2, $3, 'SINGLE'::"RoomType", 0, 0, 1, 'AVAILABLE'::"RoomStatus", '', $4, $5, NOW(), NOW()
-        WHERE NOT EXISTS (SELECT 1 FROM "Room" WHERE id = $1)
-      `, [
-        PLACEHOLDER_ROOM_ID,
-        "DELETED",
-        "Deleted Room (Placeholder)",
-        "This room was deleted but is still referenced by historical reservations. It serves as a placeholder to preserve reservation history.",
-        placeholderProviderId,
-      ]);
-    } catch (insertErr) {
-      // If RoomType enum is missing the 'SINGLE' value, try without cast
-      // (column default will apply).
-      console.warn("[ensureReservationIntegrity] Could not insert placeholder Room with enum cast, trying fallback:", insertErr instanceof Error ? insertErr.message : insertErr);
-      try {
-        await client.query(`
-          INSERT INTO "Room" ("id", "number", "name", "pricePerNight", "floor", "capacity", "amenities", "description", "providerId", "createdAt", "updatedAt")
-          SELECT
-            $1, $2, $3, 0, 0, 1, '', $4, $5, NOW(), NOW()
-          WHERE NOT EXISTS (SELECT 1 FROM "Room" WHERE id = $1)
-        `, [
-          PLACEHOLDER_ROOM_ID,
-          "DELETED",
-          "Deleted Room (Placeholder)",
-          "This room was deleted but is still referenced by historical reservations. It serves as a placeholder to preserve reservation history.",
-          placeholderProviderId,
-        ]);
-      } catch (fallbackErr) {
-        console.error("[ensureReservationIntegrity] Fallback placeholder Room insert also failed:", fallbackErr instanceof Error ? fallbackErr.message : fallbackErr);
-      }
-    }
+      -- Provider columns
+      ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "licenseFile" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "type" TEXT NOT NULL DEFAULT 'GUESTHOUSE';
+      ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "subCity" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "woreda" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "rejectionReason" TEXT NOT NULL DEFAULT '';
+      ALTER TABLE "Provider" ADD COLUMN IF NOT EXISTS "suspensionReason" TEXT NOT NULL DEFAULT '';
 
-    // Step 7: Count orphan reservations BEFORE repair (for logging).
-    let orphanCount = 0;
-    try {
-      const countResult = await client.query(`
-        SELECT COUNT(*)::int as cnt
-        FROM "Reservation" r
-        WHERE r."roomId" IS NULL
-           OR NOT EXISTS (SELECT 1 FROM "Room" room WHERE room.id = r."roomId")
-      `);
-      orphanCount = countResult.rows[0]?.cnt || 0;
-    } catch {}
+      -- Settings columns
+      ALTER TABLE "Settings" ADD COLUMN IF NOT EXISTS "configJson" JSONB;
+      ALTER TABLE "Settings" ADD COLUMN IF NOT EXISTS "providerId" TEXT;
 
-    // Step 8: Reassign orphan reservations to the placeholder Room.
-    // This PRESERVES all reservation records (per requirement #4: never
-    // delete reservation records automatically).
-    if (orphanCount > 0) {
-      const updateResult = await client.query(`
-        UPDATE "Reservation"
-        SET "roomId" = $1
-        WHERE "roomId" IS NULL
-           OR "roomId" NOT IN (SELECT id FROM "Room")
-      `, [PLACEHOLDER_ROOM_ID]);
-      console.log(`[ensureReservationIntegrity] Reassigned ${updateResult.rowCount || 0} orphan reservation(s) to placeholder Room (preserved history).`);
-    }
+      -- GroupBooking table
+      CREATE TABLE IF NOT EXISTS "GroupBooking" (
+        "id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL,
+        "contactName" TEXT NOT NULL DEFAULT '', "contactPhone" TEXT NOT NULL DEFAULT '',
+        "contactEmail" TEXT NOT NULL DEFAULT '', "startDate" TEXT NOT NULL, "endDate" TEXT NOT NULL,
+        "notes" TEXT NOT NULL DEFAULT '', "status" "GroupBookingStatus" NOT NULL DEFAULT 'PENDING',
+        "totalRooms" INTEGER NOT NULL DEFAULT 0, "totalGuests" INTEGER NOT NULL DEFAULT 0,
+        "totalCost" DOUBLE PRECISION NOT NULL DEFAULT 0, "discountType" TEXT NOT NULL DEFAULT 'AMOUNT',
+        "discountAmount" DOUBLE PRECISION NOT NULL DEFAULT 0, "providerId" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      ALTER TABLE "GroupBooking" ADD COLUMN IF NOT EXISTS "discountType" TEXT NOT NULL DEFAULT 'AMOUNT';
+      ALTER TABLE "GroupBooking" ADD COLUMN IF NOT EXISTS "discountAmount" DOUBLE PRECISION NOT NULL DEFAULT 0;
 
-    // Step 9: Ensure ALL Reservation columns exist (especially guestNotes
-    // which was added recently and may be missing on the production DB).
-    // ALTER TABLE ADD COLUMN IF NOT EXISTS is idempotent — safe to re-run.
-    // This is critical: prisma.reservation.findFirst() / findMany() will
-    // throw "column does not exist" if guestNotes is missing from the DB
-    // even though it's in the Prisma schema.
-    const reservationColumns: Array<[string, string]> = [
-      ["guestNotes", "TEXT NOT NULL DEFAULT ''"],
-      ["exceptionReason", "TEXT NOT NULL DEFAULT ''"],
-      ["exceptionallyReserved", "BOOLEAN NOT NULL DEFAULT false"],
-      ["secondGuestName", "TEXT NOT NULL DEFAULT ''"],
-      ["secondGuestPhone", "TEXT NOT NULL DEFAULT ''"],
-      ["secondGuestIdNumber", "TEXT NOT NULL DEFAULT ''"],
-      ["taxAmount", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
-      ["discountAmount", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
-      ["paidAmount", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
-      ["balance", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
-      ["groupBookingId", "TEXT"],
-      ["actualCheckIn", "TIMESTAMP(3)"],
-      ["actualCheckOut", "TIMESTAMP(3)"],
-    ];
-    for (const [col, def] of reservationColumns) {
-      try {
-        await client.query(`ALTER TABLE "Reservation" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
-      } catch (colErr) {
-        // Don't swallow silently — log so we can debug
-        console.warn(`[ensureReservationIntegrity] Could not add Reservation.${col}:`, colErr instanceof Error ? colErr.message : colErr);
-      }
-    }
+      -- Convert TEXT status columns to enums (only if TEXT + enum exists)
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Provider' AND column_name='status' AND data_type='text')
+           AND EXISTS (SELECT 1 FROM pg_type WHERE typname='ProviderStatus') THEN
+          UPDATE "Provider" SET "status" = 'PENDING' WHERE "status" IS NULL OR "status"::text NOT IN ('PENDING','APPROVED','REJECTED','SUSPENDED');
+          ALTER TABLE "Provider" ALTER COLUMN "status" TYPE "ProviderStatus" USING "status"::"ProviderStatus";
+        END IF;
+      EXCEPTION WHEN OTHERS THEN null;
+      END $$;
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='User' AND column_name='role' AND data_type='text')
+           AND EXISTS (SELECT 1 FROM pg_type WHERE typname='UserRole') THEN
+          UPDATE "User" SET "role" = 'STAFF' WHERE "role" IS NULL OR "role"::text NOT IN ('POLICE','SUPERUSER','OPERATOR','STAFF');
+          ALTER TABLE "User" ALTER COLUMN "role" TYPE "UserRole" USING "role"::"UserRole";
+        END IF;
+      EXCEPTION WHEN OTHERS THEN null;
+      END $$;
 
-    // Step 9b: Ensure ALL Guest columns exist (especially otpCode +
-    // otpExpiresAt which were added for the /find app's phone+OTP auth,
-    // and providerId which was made nullable). prisma.guest.update() /
-    // findFirst() will throw "column does not exist" if these are missing.
-    const guestColumns: Array<[string, string]> = [
-      ["otpCode", "TEXT"],
-      ["otpExpiresAt", "TIMESTAMP(3)"],
-      ["email", "TEXT NOT NULL DEFAULT ''"],
-      ["phone", "TEXT NOT NULL DEFAULT ''"],
-      ["idNumber", "TEXT NOT NULL DEFAULT ''"],
-      ["idType", "TEXT NOT NULL DEFAULT ''"],
-      ["nationality", "TEXT NOT NULL DEFAULT ''"],
-      ["region", "TEXT NOT NULL DEFAULT ''"],
-      ["zone", "TEXT NOT NULL DEFAULT ''"],
-      ["woreda", "TEXT NOT NULL DEFAULT ''"],
-      ["kebele", "TEXT NOT NULL DEFAULT ''"],
-      ["houseNumber", "TEXT NOT NULL DEFAULT ''"],
-      ["streetName", "TEXT NOT NULL DEFAULT ''"],
-      ["plateNumber", "TEXT NOT NULL DEFAULT ''"],
-      ["weapon", "TEXT NOT NULL DEFAULT ''"],
-      ["address", "TEXT NOT NULL DEFAULT ''"],
-      ["notes", "TEXT NOT NULL DEFAULT ''"],
-      ["vip", "BOOLEAN NOT NULL DEFAULT false"],
-      ["totalSpent", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
-      ["totalStays", "INTEGER NOT NULL DEFAULT 0"],
-    ];
-    for (const [col, def] of guestColumns) {
-      try {
-        await client.query(`ALTER TABLE "Guest" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
-      } catch (colErr) {
-        console.warn(`[ensureReservationIntegrity] Could not add Guest.${col}:`, colErr instanceof Error ? colErr.message : colErr);
-      }
-    }
+      -- Placeholder Room for orphan reservations
+      INSERT INTO "Room" ("id", "number", "name", "type", "pricePerNight", "floor", "capacity", "status", "amenities", "description", "providerId", "createdAt", "updatedAt")
+      SELECT 'deleted-room-placeholder', 'DELETED', 'Deleted Room', 'SINGLE', 0, 0, 1, 'AVAILABLE', '', '', '', NOW(), NOW()
+      WHERE NOT EXISTS (SELECT 1 FROM "Room" WHERE id = 'deleted-room-placeholder');
 
-    // Also make Guest.providerId nullable (for OTP-registered guests
-    // without a provider). Idempotent — no-op if already nullable.
-    try {
-      await client.query(`ALTER TABLE "Guest" ALTER COLUMN "providerId" DROP NOT NULL`);
-    } catch (colErr) {
-      // Already nullable or column missing — log but don't throw
-      console.warn(`[ensureReservationIntegrity] Could not drop NOT NULL on Guest.providerId:`, colErr instanceof Error ? colErr.message : colErr);
-    }
+      -- Reassign orphan reservations
+      UPDATE "Reservation" SET "roomId" = 'deleted-room-placeholder'
+      WHERE "roomId" IS NULL OR "roomId" NOT IN (SELECT id FROM "Room");
 
-    // Step 9c: Ensure Room table has all required columns too (since
-    // prisma.room.update() is called during checkout to set status=AVAILABLE)
-    const roomExtraColumns: Array<[string, string]> = [
-      ["pricePerNightWeekend", "DOUBLE PRECISION"],
-      ["image", "TEXT"],
-      ["amenities", "TEXT NOT NULL DEFAULT ''"],
-      ["description", "TEXT NOT NULL DEFAULT ''"],
-      ["status", "RoomStatus NOT NULL DEFAULT 'AVAILABLE'"],
-      ["type", "RoomType NOT NULL DEFAULT 'SINGLE'"],
-    ];
-    for (const [col, def] of roomExtraColumns) {
-      try {
-        await client.query(`ALTER TABLE "Room" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
-      } catch (colErr) {
-        console.warn(`[ensureReservationIntegrity] Could not add Room.${col}:`, colErr instanceof Error ? colErr.message : colErr);
-      }
-    }
+      -- Backfill NULLs (all in one batch)
+      UPDATE "Reservation" SET "guestId" = '' WHERE "guestId" IS NULL;
+      UPDATE "Reservation" SET "checkIn" = '' WHERE "checkIn" IS NULL;
+      UPDATE "Reservation" SET "checkOut" = '' WHERE "checkOut" IS NULL;
+      UPDATE "Reservation" SET "nights" = 1 WHERE "nights" IS NULL;
+      UPDATE "Reservation" SET "notes" = '' WHERE "notes" IS NULL;
+      UPDATE "Reservation" SET "guestNotes" = '' WHERE "guestNotes" IS NULL;
+      UPDATE "Reservation" SET "providerId" = '' WHERE "providerId" IS NULL;
+      UPDATE "User" SET "email" = '' WHERE "email" IS NULL;
+      UPDATE "User" SET "phone" = '' WHERE "phone" IS NULL;
+      UPDATE "Provider" SET "subCity" = '' WHERE "subCity" IS NULL;
+      UPDATE "Provider" SET "woreda" = '' WHERE "woreda" IS NULL;
+    `;
 
-    // Step 9d: Ensure GroupBooking table + ALL columns exist.
-    // prisma.groupBooking.findMany() fails with "column does not exist"
-    // if discountType, discountAmount, or other recently-added columns
-    // are missing. Also creates the table itself if it doesn't exist.
-    try {
-      // Create the GroupBookingStatus enum if missing
-      await client.query(`DO $$ BEGIN CREATE TYPE "GroupBookingStatus" AS ENUM ('PENDING','CONFIRMED','IN_PROGRESS','COMPLETED','CANCELLED'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
-    } catch {}
+    // Execute ALL DDL + backfills in ONE round-trip to the database
+    await client.query(BATCH_DDL);
+    console.log("[ensureReservationIntegrity] Batch DDL applied in 1 query ✓");
 
-    // Create the GroupBooking table if it doesn't exist
-    try {
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS "GroupBooking" (
-          "id" TEXT NOT NULL PRIMARY KEY,
-          "name" TEXT NOT NULL,
-          "contactName" TEXT NOT NULL DEFAULT '',
-          "contactPhone" TEXT NOT NULL DEFAULT '',
-          "contactEmail" TEXT NOT NULL DEFAULT '',
-          "startDate" TEXT NOT NULL,
-          "endDate" TEXT NOT NULL,
-          "notes" TEXT NOT NULL DEFAULT '',
-          "status" "GroupBookingStatus" NOT NULL DEFAULT 'PENDING',
-          "totalRooms" INTEGER NOT NULL DEFAULT 0,
-          "totalGuests" INTEGER NOT NULL DEFAULT 0,
-          "totalCost" DOUBLE PRECISION NOT NULL DEFAULT 0,
-          "discountType" TEXT NOT NULL DEFAULT 'AMOUNT',
-          "discountAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
-          "providerId" TEXT NOT NULL,
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-    } catch (tableErr) {
-      console.warn("[ensureReservationIntegrity] Could not create GroupBooking table:", tableErr instanceof Error ? tableErr.message : tableErr);
-    }
-
-    // Add any missing columns to existing GroupBooking table
-    const groupBookingColumns: Array<[string, string]> = [
-      ["contactName", "TEXT NOT NULL DEFAULT ''"],
-      ["contactPhone", "TEXT NOT NULL DEFAULT ''"],
-      ["contactEmail", "TEXT NOT NULL DEFAULT ''"],
-      ["notes", "TEXT NOT NULL DEFAULT ''"],
-      ["totalRooms", "INTEGER NOT NULL DEFAULT 0"],
-      ["totalGuests", "INTEGER NOT NULL DEFAULT 0"],
-      ["totalCost", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
-      ["discountType", "TEXT NOT NULL DEFAULT 'AMOUNT'"],
-      ["discountAmount", "DOUBLE PRECISION NOT NULL DEFAULT 0"],
-    ];
-    for (const [col, def] of groupBookingColumns) {
-      try {
-        await client.query(`ALTER TABLE "GroupBooking" ADD COLUMN IF NOT EXISTS "${col}" ${def}`);
-      } catch (colErr) {
-        console.warn(`[ensureReservationIntegrity] Could not add GroupBooking.${col}:`, colErr instanceof Error ? colErr.message : colErr);
-      }
-    }
-
-    // Step 10: Backfill NULL values in Reservation's other non-nullable
-    // columns. Same pattern as ensure-not-null-defaults.ts but scoped
-    // to Reservation only.
-    const reservationBackfills: Array<[string, string]> = [
-      ["guestId", "''"],
-      ["checkIn", "''"],
-      ["checkOut", "''"],
-      ["nights", "1"],
-      ["roomRate", "0"],
-      ["totalCost", "0"],
-      ["paidAmount", "0"],
-      ["balance", "0"],
-      ["notes", "''"],
-      ["taxAmount", "0"],
-      ["discountAmount", "0"],
-      ["secondGuestName", "''"],
-      ["secondGuestPhone", "''"],
-      ["secondGuestIdNumber", "''"],
-      ["exceptionReason", "''"],
-      ["guestNotes", "''"],
-      ["providerId", "''"],
-    ];
-    for (const [col, defaultExpr] of reservationBackfills) {
-      try {
-        const result = await client.query(
-          `UPDATE "Reservation" SET "${col}" = ${defaultExpr} WHERE "${col}" IS NULL`
-        );
-        if (result.rowCount && result.rowCount > 0) {
-          console.log(`[ensureReservationIntegrity] Reservation.${col}: backfilled ${result.rowCount} NULL rows with ${defaultExpr}`);
-        }
-      } catch {}
-    }
-
-    // Step 10: Ensure the FK constraint exists (with ON DELETE RESTRICT).
-    // This prevents future Room deletions from creating orphan reservations.
-    try {
-      await client.query(`
-        DO $$ BEGIN
-          ALTER TABLE "Reservation" DROP CONSTRAINT IF EXISTS "Reservation_roomId_fkey";
-          ALTER TABLE "Reservation" ADD CONSTRAINT "Reservation_roomId_fkey"
-            FOREIGN KEY ("roomId") REFERENCES "Room"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-        EXCEPTION WHEN OTHERS THEN null;
-        END $$;
-      `);
-    } catch {}
-
-    console.log(`[ensureReservationIntegrity] Repair complete. Orphans fixed: ${orphanCount}.`);
+  } catch (err) {
+    console.error("[ensureReservationIntegrity] Batch DDL failed:", err instanceof Error ? err.message : err);
+    throw err;
   } finally {
     try { await client.end(); } catch {}
   }
 }
 
-/**
- * Reset the cached state. Used by tests or when forcing a re-check.
- */
+
 export function resetReservationIntegrityCheck(): void {
   _checked = false;
   _promise = null;
