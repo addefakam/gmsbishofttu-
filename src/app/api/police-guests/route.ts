@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAuthContext, requirePolice, getJurisdictionFilter, AuthError } from "@/lib/tenant";
 import { logAudit } from "@/lib/audit";
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 5;
@@ -11,7 +12,7 @@ const DEFAULT_PAGE_SIZE = 5;
 export async function GET(req: NextRequest) {
   try {
     resetInitFlag();
-    await ensureDatabase();
+    await ensureReservationIntegrity();
     const auth = await getAuthContext(req);
     requirePolice(auth);
     const permError = checkPolicePermission(auth, "police_guests");

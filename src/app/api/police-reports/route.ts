@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     }
   try {
     resetInitFlag();
-    await ensureDatabase();
+    await ensureReservationIntegrity();
 
     const auth = await getAuthContext(req);
     requirePolice(auth);

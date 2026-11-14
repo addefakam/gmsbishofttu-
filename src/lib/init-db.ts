@@ -1196,6 +1196,13 @@ async function runMigrationsOnly(): Promise<void> {
 }
 
 export async function ensureDatabase(): Promise<void> {
+  // SHARED CACHE: if ensureReservationIntegrity (or any other helper)
+  // already ran successfully on this instance, skip entirely.
+  // This prevents ensureDatabase() from running its ~200 DDL statements
+  // when the schema has already been fixed by a faster helper.
+  if (typeof globalThis !== "undefined" && (globalThis as any).__ghmsSchemaChecked === true) {
+    return;
+  }
   if (_initDone) {
     // Migrations already ran successfully in this process — skip.
     // Previously this re-ran ~200 DDL statements (ALTER TABLE + CREATE INDEX)

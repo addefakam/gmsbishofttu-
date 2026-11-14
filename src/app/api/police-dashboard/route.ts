@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAuthContext, requirePolice, getJurisdictionFilter, AuthError } from "@/lib/tenant";
 import { runReservationMaintenance } from "@/lib/reservation-maintenance";
+import { ensureReservationIntegrity } from "@/lib/ensure-reservation-integrity";
 
 // ── Force dynamic rendering ──
 // Prevents Vercel from caching stale dashboard data at the edge.
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     resetInitFlag();
-    await ensureDatabase();
+    await ensureReservationIntegrity();
     const auth = await getAuthContext(req);
     requirePolice(auth);
     const permError = checkPolicePermission(auth, "police_dashboard");
