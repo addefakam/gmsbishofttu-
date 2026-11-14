@@ -252,10 +252,24 @@ export async function DELETE(
       );
     }
 
-    // HARD DELETE — completely removes the integration AND all its
-    // API logs (cascade delete via FK constraint). The external system
-    // immediately loses access (API key hash is gone).
-    await db.integration.delete({ where: { id } });
+    // HARD DELETE — use a transaction to:
+    // 1. Delete all ApiLog records for this integration (in case FK
+    //    cascade doesn't work — common with runtime schema issues)
+    // 2. Delete the Integration itself
+    // 3. If either fails, try raw SQL as fallback
+    try {
+      await db.$transaction([
+        db.apiLog.deleteMany({ where: { integrationId: id } }),
+        db.integration.delete({ where: { id } }),
+      ]);
+    } catch (txErr) {
+      // Fallback: raw SQL delete (bypasses Prisma's relation handling)
+      console.warn("[integrations DELETE] Transaction failed, trying raw SQL:", txErr instanceof Error ? txErr.message : txErr);
+      try {
+        await db.$executeRawUnsafe(`DELETE FROM "ApiLog" WHERE "integrationId" = $1`, id);
+      } catch {}
+      await db.$executeRawUnsafe(`DELETE FROM "Integration" WHERE "id" = $1`, id);
+    }
 
     return NextResponse.json({
       success: true,
