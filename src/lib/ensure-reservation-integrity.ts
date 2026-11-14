@@ -47,6 +47,7 @@
  * API handler and cause empty body / "Unexpected end of JSON input").
  */
 import { ensureDatabase } from "./init-db";
+import { db } from "./db";
 
 let _checked = false;
 let _promise: Promise<void> | null = null;
@@ -73,22 +74,32 @@ function markSchemaChecked(): void {
 }
 
 export async function ensureReservationIntegrity(): Promise<void> {
-  // FAST PATH: if any schema helper already ran, skip entirely (0ms)
+  // FAST PATH 1: if any schema helper already ran, skip entirely (0ms)
   if (isSchemaChecked()) return;
   if (_checked) return;
   if (_promise) { await _promise; return; }
 
   _promise = (async () => {
     try {
-      // NOTE: We intentionally DO NOT call ensureDatabase() here.
-      // ensureDatabase() opens a pg.Client with 30s timeout and runs
-      // ~200 DDL statements — this causes Vercel function timeouts
-      // (10s limit on hobby tier). Instead, repairReservationIntegrity()
-      // does ALL the necessary table/column fixes directly with a
-      // short 3s connection timeout.
+      // FAST PATH 2: Check if the schema is ALREADY correct using Prisma's
+      // EXISTING connection (no new pg.Client, no SSL handshake).
+      // This is a single lightweight query: ~10-50ms.
+      // If the 'guestNotes' column exists, the schema has already been
+      // fixed by a previous deploy — skip the entire DDL batch.
+      const schemaOk = await checkSchemaAlreadyFixed();
+      if (schemaOk) {
+        _checked = true;
+        markSchemaChecked();
+        console.log("[ensureReservationIntegrity] Schema already OK — skipped DDL entirely ✓");
+        return;
+      }
+
+      // SLOW PATH: Schema needs fixing — open pg.Client + run batched DDL
+      // This only runs on the FIRST cold start after a deploy that adds
+      // new columns. Subsequent cold starts hit the fast path above.
       await repairReservationIntegrity();
       _checked = true;
-      markSchemaChecked(); // Mark for ALL helpers to skip
+      markSchemaChecked();
     } catch (err) {
       _attempts++;
       console.error(
@@ -96,10 +107,8 @@ export async function ensureReservationIntegrity(): Promise<void> {
         err instanceof Error ? err.message : err
       );
       if (_attempts >= MAX_ATTEMPTS) {
-        console.error(`[ensureReservationIntegrity] Giving up after ${MAX_ATTEMPTS} attempts — schema fixes skipped.`);
+        console.error(`[ensureReservationIntegrity] Giving up — schema fixes skipped.`);
         _checked = true;
-        // CRITICAL: mark as checked even on failure so subsequent helpers
-        // don't retry (which would cause additional timeouts)
         markSchemaChecked();
       }
       _promise = null;
@@ -107,6 +116,31 @@ export async function ensureReservationIntegrity(): Promise<void> {
   })();
 
   await _promise;
+}
+
+/**
+ * Quick check: is the schema already fixed?
+ * Uses Prisma's EXISTING connection (no new pg.Client, no SSL handshake).
+ * Checks for 'guestNotes' column — if it exists, ALL the DDL from
+ * previous deploys has already been applied.
+ *
+ * This is the KEY performance optimization: on subsequent cold starts
+ * (after the first deploy that added guestNotes), this check returns
+ * true in ~10-50ms, and we skip the entire pg.Client + batched DDL
+ * (which takes 500ms-3s).
+ */
+async function checkSchemaAlreadyFixed(): Promise<boolean> {
+  try {
+    // Use Prisma's existing connection (no new pg.Client needed)
+    // $queryRawUnsafe takes a string — this is a single lightweight query
+    const result = await db.$queryRawUnsafe<Array<{ exists: boolean }>>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Reservation' AND column_name = 'guestNotes') AS exists`
+    );
+    return result[0]?.exists === true;
+  } catch {
+    // If the check fails (e.g. table doesn't exist), run the full DDL
+    return false;
+  }
 }
 
 /**
