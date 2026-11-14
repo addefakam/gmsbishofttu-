@@ -282,6 +282,46 @@ async function repairReservationIntegrity(): Promise<void> {
       UPDATE "User" SET "phone" = '' WHERE "phone" IS NULL;
       UPDATE "Provider" SET "subCity" = '' WHERE "subCity" IS NULL;
       UPDATE "Provider" SET "woreda" = '' WHERE "woreda" IS NULL;
+
+      -- Integration + ApiLog tables (for external API access)
+      CREATE TABLE IF NOT EXISTS "Integration" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "name" TEXT NOT NULL,
+        "description" TEXT NOT NULL DEFAULT '',
+        "apiKeyHash" TEXT NOT NULL UNIQUE,
+        "apiKeyPrefix" TEXT NOT NULL DEFAULT '',
+        "scopes" TEXT NOT NULL DEFAULT '[]',
+        "permissions" TEXT NOT NULL DEFAULT '["read"]',
+        "status" TEXT NOT NULL DEFAULT 'PENDING',
+        "rateLimit" INTEGER NOT NULL DEFAULT 1000,
+        "ipAllowlist" TEXT NOT NULL DEFAULT '[]',
+        "dataSharing" JSONB,
+        "webhookUrl" TEXT,
+        "webhookSecret" TEXT,
+        "createdBy" TEXT NOT NULL DEFAULT '',
+        "lastUsedAt" TIMESTAMP(3),
+        "expiresAt" TIMESTAMP(3),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS "Integration_apiKeyHash_idx" ON "Integration" ("apiKeyHash");
+      CREATE INDEX IF NOT EXISTS "Integration_status_idx" ON "Integration" ("status");
+
+      CREATE TABLE IF NOT EXISTS "ApiLog" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "integrationId" TEXT NOT NULL,
+        "integrationName" TEXT NOT NULL DEFAULT '',
+        "endpoint" TEXT NOT NULL,
+        "method" TEXT NOT NULL,
+        "statusCode" INTEGER NOT NULL,
+        "responseTimeMs" INTEGER,
+        "ipAddress" TEXT,
+        "userAgent" TEXT,
+        "requestParams" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS "ApiLog_integrationId_idx" ON "ApiLog" ("integrationId");
+      CREATE INDEX IF NOT EXISTS "ApiLog_createdAt_idx" ON "ApiLog" ("createdAt");
     `;
 
     // Execute ALL DDL + backfills in ONE round-trip to the database

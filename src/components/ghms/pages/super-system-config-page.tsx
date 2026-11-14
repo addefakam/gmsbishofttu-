@@ -1,5 +1,6 @@
 "use client";
 import { useTranslation } from "react-i18next";
+import { ExternalApiTab } from "@/components/ghms/external-api-tab";
 
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
@@ -31,7 +32,7 @@ import {
 
 // ── Types ──
 
-type TabKey = "general" | "guesthouse" | "security" | "notifications" | "payment" | "emergency" | "divisions";
+type TabKey = "general" | "guesthouse" | "security" | "notifications" | "payment" | "emergency" | "divisions" | "integrations";
 
 interface GeneralSettings {
   systemName: string;
@@ -185,6 +186,7 @@ const TABS: Array<{
   { key: "payment", label: "Payment & Billing", icon: CreditCard },
   { key: "emergency", label: "Emergency Contacts", icon: Siren },
   { key: "divisions", label: "Sub-Cities & Woredas", icon: MapPin },
+  { key: "integrations", label: "External API", icon: Globe },
 ];
 
 // ── Shared UI Components ──
@@ -2054,6 +2056,7 @@ export default function SuperSystemConfigPage() {
           )}
           {activeTab === "emergency" && <EmergencyTab />}
           {activeTab === "divisions" && <DivisionsTab />}
+          {activeTab === "integrations" && <ExternalApiTab />}
         </div>
       )}
     </div>

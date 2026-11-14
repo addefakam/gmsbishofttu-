@@ -768,6 +768,55 @@ model GroupBooking {
   @@index([startDate])
 }
 
+// ─── External API Integration ───────────────────────────────────────────────
+// Manages external system connections (e.g., Tourist Management System)
+// Each integration has an API key, data sharing config, and audit trail.
+
+model Integration {
+  id              String    @id @default(cuid())
+  name            String
+  description     String    @default("")
+  apiKeyHash      String    @unique  // SHA-256 hash of the API key
+  apiKeyPrefix    String              // First 12 chars for display (e.g. "ghms_live_a")
+  scopes          String    @default("[]")  // JSON: ["providers", "rooms", "guests"]
+  permissions     String    @default("[\"read\"]")  // JSON: ["read"]
+  status          String    @default("PENDING")  // PENDING|ACTIVE|SUSPENDED|REVOKED|EXPIRED
+  rateLimit       Int       @default(1000)  // requests per hour
+  ipAllowlist     String    @default("[]")  // JSON: ["196.10.10.5"]
+  dataSharing     Json?     // Field-level config (which fields to expose per entity)
+  webhookUrl      String?   // Optional: URL to push event notifications to
+  webhookSecret   String?   // HMAC signing secret for webhooks
+  createdBy       String
+  lastUsedAt      DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  apiLogs         ApiLog[]
+
+  @@index([apiKeyHash])
+  @@index([status])
+}
+
+model ApiLog {
+  id              String   @id @default(cuid())
+  integrationId   String
+  integrationName String               // Denormalized for quick display
+  endpoint        String               // "/api/v1/providers"
+  method          String               // "GET"
+  statusCode      Int                  // 200, 401, 403, 429, 500
+  responseTimeMs  Int?
+  ipAddress       String?
+  userAgent       String?
+  requestParams   String?              // Query string
+  createdAt       DateTime @default(now())
+
+  integration     Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId])
+  @@index([createdAt])
+}
+
 // ─── Staff Activity Log ──────────────────────────────────────────────────────
 
 model StaffLog {
