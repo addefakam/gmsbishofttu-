@@ -44,6 +44,15 @@ import {
   BedDouble,
   ChevronLeft,
   ChevronRight,
+  LogIn,
+  LogOut,
+  CalendarPlus,
+  ArrowRightLeft,
+  Ban,
+  RefreshCw,
+  Receipt,
+  Clock,
+  Route as RouteIcon,
 } from "lucide-react";
 import { AddressDisplay } from "@/components/shared/address-fields";
 import GuestLifecycleBadges, { type GuestLifecycleSummary } from "@/components/shared/guest-lifecycle-badges";
@@ -73,6 +82,32 @@ interface Guest {
   provider: { id: string; name: string } | null;
 }
 
+// ── Movement timeline event shape ────────────────────────────────
+// Mirrors what /api/guests/[id]/lifecycle returns in `events[]`.
+type MovementEventType =
+  | "RESERVATION_CREATED"
+  | "CHECKED_IN"
+  | "CHECKED_OUT"
+  | "EARLY_CHECKOUT"
+  | "CANCELLED"
+  | "EXTENDED"
+  | "ROOM_SHIFTED"
+  | "PAYMENT"
+  | "RESERVATION_UPDATED";
+
+interface MovementEvent {
+  type: MovementEventType;
+  timestamp: string;
+  label: string;
+  details: Record<string, unknown>;
+  source: "STAFF_LOG" | "RESERVATION";
+  reservationId: string;
+  roomNumber?: string;
+  actorName?: string;
+  providerId?: string | null;
+  providerName?: string | null;
+}
+
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "ETB", minimumFractionDigits: 0 }).format(amount);
 }
@@ -84,6 +119,38 @@ function formatDate(dateStr: string) {
     year: "numeric",
   });
 }
+
+function formatDateTime(dateStr: string) {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+// Per-event-type presentation: icon + tinted chip background.
+// Aligned with the colour scheme used by GuestLifecycleBadges for
+// consistency (amber=early, sky=extended, violet=shifted,
+// rose=cancelled, slate=updated, emerald=check-in, blue=check-out,
+// indigo=payment, primary=reservation-created).
+const EVENT_PRESENTATION: Record<
+  MovementEventType,
+  { icon: typeof LogIn; dot: string; chip: string; iconColor: string }
+> = {
+  RESERVATION_CREATED: { icon: CalendarPlus, dot: "bg-primary", chip: "bg-primary/10 text-primary", iconColor: "text-primary" },
+  CHECKED_IN:          { icon: LogIn,        dot: "bg-emerald-500", chip: "bg-emerald-50 text-emerald-700", iconColor: "text-emerald-600" },
+  CHECKED_OUT:         { icon: LogOut,       dot: "bg-blue-500",    chip: "bg-blue-50 text-blue-700",       iconColor: "text-blue-600" },
+  EARLY_CHECKOUT:      { icon: Clock,        dot: "bg-amber-500",   chip: "bg-amber-50 text-amber-700",     iconColor: "text-amber-600" },
+  CANCELLED:           { icon: Ban,          dot: "bg-rose-500",    chip: "bg-rose-50 text-rose-700",       iconColor: "text-rose-600" },
+  EXTENDED:            { icon: CalendarPlus, dot: "bg-sky-500",     chip: "bg-sky-50 text-sky-700",         iconColor: "text-sky-600" },
+  ROOM_SHIFTED:        { icon: ArrowRightLeft, dot: "bg-violet-500", chip: "bg-violet-50 text-violet-700",  iconColor: "text-violet-600" },
+  PAYMENT:             { icon: Receipt,      dot: "bg-indigo-500",  chip: "bg-indigo-50 text-indigo-700",   iconColor: "text-indigo-600" },
+  RESERVATION_UPDATED: { icon: RefreshCw,    dot: "bg-slate-400",   chip: "bg-slate-50 text-slate-700",     iconColor: "text-slate-500" },
+};
 
 export default function PoliceGuestsPage() {
   const { t } = useTranslation("policeGuests");
@@ -101,6 +168,15 @@ export default function PoliceGuestsPage() {
   // Per-guest lifecycle summaries — powers the status-change badges
   // (early exit, extended, room shifted, cancelled) in the History column.
   const [lifecycleMap, setLifecycleMap] = useState<Record<string, GuestLifecycleSummary>>({});
+
+  // ── Movement timeline state ──
+  // When the detail dialog opens for a guest, we fetch the FULL lifecycle
+  // (events[] array) — not just the summary — and render a vertical
+  // timeline showing every check-in, check-out, room shift, payment,
+  // cancellation, etc., tagged with the provider it happened at.
+  const [movementEvents, setMovementEvents] = useState<MovementEvent[]>([]);
+  const [movementLoading, setMovementLoading] = useState(false);
+  const [movementError, setMovementError] = useState<string | null>(null);
 
   // Debounce search input (300ms) to avoid firing a request on every keystroke
   useEffect(() => {
@@ -155,6 +231,38 @@ export default function PoliceGuestsPage() {
 
   useEffect(() => { fetchGuests(); }, [fetchGuests, refreshKey]);
 
+  // Fetch the full movement timeline whenever the detail dialog opens
+  // for a guest. Reuses the same lifecycle endpoint but consumes the
+  // `events` array (the table-summary fetch above only used `summary`).
+  const selectedGuestId = selectedGuest?.id;
+  useEffect(() => {
+    // No guest selected / dialog closed — nothing to fetch. The
+    // movementEvents state is reset by the dialog's onOpenChange handler
+    // when the dialog closes, so we don't need a synchronous setState here.
+    if (!detailOpen || !selectedGuestId) {
+      return;
+    }
+    let cancelled = false;
+    setMovementLoading(true);
+    setMovementError(null);
+    apiGetGuestLifecycle(selectedGuestId)
+      .then((data: any) => {
+        if (cancelled) return;
+        const events: MovementEvent[] = Array.isArray(data?.events) ? data.events : [];
+        setMovementEvents(events);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : t('movementLoadFailed');
+        setMovementError(msg);
+        setMovementEvents([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMovementLoading(false);
+      });
+    return () => { cancelled = true };
+  }, [detailOpen, selectedGuestId]);
+
   const openDetail = (guest: Guest) => {
     setSelectedGuest(guest);
     setDetailOpen(true);
@@ -171,6 +279,16 @@ export default function PoliceGuestsPage() {
 
   const rangeFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeTo = Math.min(page * pageSize, total);
+
+  // Number of distinct providers the guest has stayed at — derived from
+  // the movement events. Surfaced as a stat above the timeline so the
+  // police officer can see at a glance whether this is a single-property
+  // guest or someone moving between properties.
+  const distinctProviders = new Set(
+    movementEvents
+      .map((e) => e.providerName)
+      .filter((n): n is string => Boolean(n))
+  ).size;
 
   return (
     <div className="space-y-4 p-3 sm:p-4 md:p-6">
@@ -335,9 +453,21 @@ export default function PoliceGuestsPage() {
         )}
       </div>
 
-      {/* Guest Detail Dialog — mobile optimized */}
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto mx-4 sm:mx-0 w-[calc(100%-2rem)] sm:w-full">
+      {/* Guest Detail Dialog — wider, two-column on desktop, with Movement Timeline */}
+      <Dialog
+        open={detailOpen}
+        onOpenChange={(open) => {
+          setDetailOpen(open);
+          // Reset movement timeline state when the dialog closes so the
+          // next opening starts fresh (no stale events from the previous guest).
+          if (!open) {
+            setMovementEvents([]);
+            setMovementError(null);
+            setMovementLoading(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto w-[calc(100%-2rem)] sm:w-full">
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center gap-2 text-base sm:text-lg">
               <UserCircle className="h-5 w-5" />
@@ -350,105 +480,207 @@ export default function PoliceGuestsPage() {
             </DialogTitle>
             <DialogDescription className="text-xs sm:text-sm">
               {selectedGuest?.provider?.name || t('unknownProvider')}
+              {" · "}
+              {t('movementCount', { count: movementEvents.length })}
+              {distinctProviders > 1 && ` · ${t('providersVisited', { count: distinctProviders })}`}
             </DialogDescription>
           </DialogHeader>
           {selectedGuest && (
-            <div className="space-y-4">
-              {/* Quick stats row — always visible, stack on very small */}
-              <div className="grid grid-cols-3 gap-2 sm:gap-4">
-                <div className="rounded-lg border bg-muted/30 p-2.5 sm:p-3 text-center">
-                  <CreditCard className="mx-auto mb-1 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
-                  <p className="text-sm sm:text-lg font-bold leading-tight">{formatCurrency(selectedGuest.totalSpent)}</p>
-                  <p className="text-[10px] sm:text-xs text-muted-foreground">{t('spent')}</p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* ── LEFT: Guest profile + identity + contact ── */}
+              <div className="space-y-4">
+                {/* Quick stats row — always visible, stack on very small */}
+                <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                  <div className="rounded-lg border bg-muted/30 p-2.5 sm:p-3 text-center">
+                    <CreditCard className="mx-auto mb-1 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
+                    <p className="text-sm sm:text-lg font-bold leading-tight">{formatCurrency(selectedGuest.totalSpent)}</p>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">{t('spent')}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 p-2.5 sm:p-3 text-center">
+                    <p className="text-sm sm:text-lg font-bold leading-tight">{selectedGuest.totalStays}</p>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">{t('staysLabel')}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 p-2.5 sm:p-3 text-center">
+                    <p className="text-sm sm:text-lg font-bold leading-tight">{selectedGuest.vip ? t('yes') : t('no')}</p>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">{t('vip')}</p>
+                  </div>
                 </div>
-                <div className="rounded-lg border bg-muted/30 p-2.5 sm:p-3 text-center">
-                  <p className="text-sm sm:text-lg font-bold leading-tight">{selectedGuest.totalStays}</p>
-                  <p className="text-[10px] sm:text-xs text-muted-foreground">{t('staysLabel')}</p>
+
+                <Separator />
+
+                {/* Contact & ID details — stacked on mobile */}
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-center gap-2.5">
+                    <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">{t('detailPhone')}</p>
+                      <p className="font-medium">{selectedGuest.phone}</p>
+                    </div>
+                  </div>
+                  {selectedGuest.email && (
+                    <div className="flex items-center gap-2.5">
+                      <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">{t('detailEmail')}</p>
+                        <p className="font-medium">{selectedGuest.email}</p>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2.5">
+                    <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-slate-100 text-[8px] font-bold text-slate-600">ID</span>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">
+                        {normalizeIdType(selectedGuest.idType) || t('detailIdType')}
+                      </p>
+                      <p className="font-mono font-medium">
+                        {selectedGuest.idNumber || "—"}
+                      </p>
+                    </div>
+                  </div>
+                  {selectedGuest.nationality && (
+                    <div className="flex items-center gap-2.5">
+                      <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">{t('detailNationality')}</p>
+                        <p className="font-medium">{selectedGuest.nationality}</p>
+                      </div>
+                    </div>
+                  )}
+                  {(selectedGuest.region || selectedGuest.address) && (
+                    <div className="flex items-start gap-2.5">
+                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">{t('detailAddress')}</p>
+                        {selectedGuest.region ? (
+                          <AddressDisplay
+                            region={selectedGuest.region}
+                            zone={selectedGuest.zone}
+                            woreda={selectedGuest.woreda}
+                            kebele={selectedGuest.kebele}
+                            houseNumber={selectedGuest.houseNumber}
+                            streetName={selectedGuest.streetName}
+                          />
+                        ) : (
+                          <p className="font-medium">{selectedGuest.address || "—"}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2.5">
+                    <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">{t('detailRegistered')}</p>
+                      <p className="font-medium">{formatDate(selectedGuest.createdAt)}</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="rounded-lg border bg-muted/30 p-2.5 sm:p-3 text-center">
-                  <p className="text-sm sm:text-lg font-bold leading-tight">{selectedGuest.vip ? t('yes') : t('no')}</p>
-                  <p className="text-[10px] sm:text-xs text-muted-foreground">{t('vip')}</p>
-                </div>
+
+                {selectedGuest.notes && (
+                  <>
+                    <Separator />
+                    <div className="space-y-1.5">
+                      <Label>{t('common:lblnotes')}</Label>
+                      <p className="rounded-lg bg-muted/50 p-3 text-xs sm:text-sm">{selectedGuest.notes}</p>
+                    </div>
+                  </>
+                )}
               </div>
 
-              <Separator />
+              {/* ── RIGHT: Movement timeline ── */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2 sticky top-0 bg-card/95 backdrop-blur-sm py-1 z-10">
+                  <div className="flex items-center gap-1.5">
+                    <RouteIcon className="h-4 w-4 text-primary" />
+                    <p className="text-xs uppercase tracking-wider font-semibold">
+                      {t('movementTimeline')}
+                    </p>
+                  </div>
+                  {!movementLoading && movementEvents.length > 0 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {t('movementCount', { count: movementEvents.length })}
+                    </span>
+                  )}
+                </div>
 
-              {/* Contact & ID details — stacked on mobile */}
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center gap-2.5">
-                  <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">{t('detailPhone')}</p>
-                    <p className="font-medium">{selectedGuest.phone}</p>
+                {movementLoading ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <Skeleton key={i} className="h-16 w-full" />
+                    ))}
                   </div>
-                </div>
-                {selectedGuest.email && (
-                  <div className="flex items-center gap-2.5">
-                    <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">{t('detailEmail')}</p>
-                      <p className="font-medium">{selectedGuest.email}</p>
-                    </div>
+                ) : movementError ? (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                    {movementError}
                   </div>
+                ) : movementEvents.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground">
+                    <RouteIcon className="mb-2 h-8 w-8 opacity-40" />
+                    <p className="text-xs">{t('noMovements')}</p>
+                  </div>
+                ) : (
+                  <ol className="relative space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                    {/* Vertical guide line */}
+                    <span
+                      aria-hidden
+                      className="absolute left-[15px] top-2 bottom-2 w-px bg-border"
+                    />
+                    {movementEvents.map((ev, i) => {
+                      const p = EVENT_PRESENTATION[ev.type] ?? EVENT_PRESENTATION.RESERVATION_UPDATED;
+                      const Icon = p.icon;
+                      return (
+                        <li key={`${ev.reservationId}-${ev.type}-${i}`} className="relative pl-9">
+                          {/* Dot */}
+                          <span
+                            aria-hidden
+                            className={`absolute left-[11px] top-2 h-2.5 w-2.5 rounded-full ring-2 ring-card ${p.dot}`}
+                          />
+                          <div className="rounded-lg border bg-card p-2.5 shadow-xs">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Icon className={`h-3.5 w-3.5 shrink-0 ${p.iconColor}`} />
+                                <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-semibold leading-none ${p.chip}`}>
+                                  {t(`movementType_${ev.type}`, ev.type.replace(/_/g, ' ').toLowerCase())}
+                                </span>
+                              </div>
+                              <time className="text-[10px] text-muted-foreground whitespace-nowrap" dateTime={ev.timestamp}>
+                                {formatDateTime(ev.timestamp)}
+                              </time>
+                            </div>
+                            <p className="mt-1.5 text-xs font-medium leading-snug">
+                              {ev.label}
+                            </p>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+                              {ev.providerName && (
+                                <span className="inline-flex items-center gap-0.5">
+                                  <Building2 className="h-2.5 w-2.5" />
+                                  {ev.providerName}
+                                </span>
+                              )}
+                              {ev.roomNumber && (
+                                <span className="inline-flex items-center gap-0.5">
+                                  <BedDouble className="h-2.5 w-2.5" />
+                                  Room {ev.roomNumber}
+                                </span>
+                              )}
+                              {ev.actorName && (
+                                <span className="inline-flex items-center gap-0.5">
+                                  <UserCircle className="h-2.5 w-2.5" />
+                                  {ev.actorName}
+                                </span>
+                              )}
+                              {ev.source === "STAFF_LOG" && (
+                                <span className="rounded bg-slate-100 px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-slate-500">
+                                  staff log
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
                 )}
-                <div className="flex items-center gap-2.5">
-                  <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-slate-100 text-[8px] font-bold text-slate-600">ID</span>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">
-                      {normalizeIdType(selectedGuest.idType) || t('detailIdType')}
-                    </p>
-                    <p className="font-mono font-medium">
-                      {selectedGuest.idNumber || "—"}
-                    </p>
-                  </div>
-                </div>
-                {selectedGuest.nationality && (
-                  <div className="flex items-center gap-2.5">
-                    <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">{t('detailNationality')}</p>
-                      <p className="font-medium">{selectedGuest.nationality}</p>
-                    </div>
-                  </div>
-                )}
-                {(selectedGuest.region || selectedGuest.address) && (
-                  <div className="flex items-start gap-2.5">
-                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">{t('detailAddress')}</p>
-                      {selectedGuest.region ? (
-                        <AddressDisplay
-                          region={selectedGuest.region}
-                          zone={selectedGuest.zone}
-                          woreda={selectedGuest.woreda}
-                          kebele={selectedGuest.kebele}
-                          houseNumber={selectedGuest.houseNumber}
-                          streetName={selectedGuest.streetName}
-                        />
-                      ) : (
-                        <p className="font-medium">{selectedGuest.address || "—"}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-                <div className="flex items-center gap-2.5">
-                  <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">{t('detailRegistered')}</p>
-                    <p className="font-medium">{formatDate(selectedGuest.createdAt)}</p>
-                  </div>
-                </div>
               </div>
-
-              {selectedGuest.notes && (
-                <>
-                  <Separator />
-                  <div className="space-y-1.5">
-                    <Label>{t('common:lblnotes')}</Label>
-                    <p className="rounded-lg bg-muted/50 p-3 text-xs sm:text-sm">{selectedGuest.notes}</p>
-                  </div>
-                </>
-              )}
             </div>
           )}
         </DialogContent>

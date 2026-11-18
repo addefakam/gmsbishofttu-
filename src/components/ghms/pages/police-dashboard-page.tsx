@@ -1,9 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { usePagination } from "@/hooks/use-pagination";
-import { PaginationControls } from "@/components/shared/pagination-controls";
 import { useAppStore } from "@/lib/store";
 import { apiPoliceDashboard, apiPoliceRoomAvailability } from "@/lib/api";
 import {
@@ -15,17 +13,8 @@ import {
   type RoomStatus,
 } from "@/lib/police-app-status";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { apiGetAnomalies, apiToggleAnomalyDetection } from "@/lib/api";
 import {
   PoliceDetailDialog,
@@ -37,8 +26,6 @@ import {
   Clock,
   DoorOpen,
   Users,
-  TrendingUp,
-  AlertCircle,
   ChevronDown,
   MapPin,
   Phone,
@@ -108,13 +95,6 @@ interface BreakdownData {
   providers: BreakdownProvider[];
 }
 
-const STATUS_BADGE_CLASS: Record<string, string> = {
-  APPROVED: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-emerald-200",
-  PENDING: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-200",
-  REJECTED: "bg-red-100 text-red-800 hover:bg-red-100 border-red-200",
-  SUSPENDED: "bg-orange-100 text-orange-800 hover:bg-orange-100 border-orange-200",
-};
-
 // STATUS_LABELS replaced by t() in component
 
 function formatCurrency(amount: number) {
@@ -181,9 +161,6 @@ export default function PoliceDashboardPage() {
     fetchAnomalyStatus();
   }, [fetchAnomalyStatus]);
 
-  const providerPagination = usePagination({ totalItems: dashboard?.providers?.length || 0, initialPageSize: 10, pageSizeOptions: [10, 20, 50, 100] });
-  const paginatedProviders = useMemo(() => providerPagination.paginate(dashboard?.providers || []), [dashboard?.providers, providerPagination]);
-
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -216,16 +193,6 @@ export default function PoliceDashboardPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData, refreshKey]);
-
-  const getStatusLabel = (status: string) => {
-    const map: Record<string, string> = {
-      APPROVED: t("statusApproved"),
-      PENDING: t("statusPending"),
-      REJECTED: t("statusRejected"),
-      SUSPENDED: t("statusSuspended"),
-    };
-    return map[status] || status;
-  };
 
   const kpiCards = dashboard
     ? [
@@ -388,105 +355,6 @@ export default function PoliceDashboardPage() {
           <p className="text-[11px] text-muted-foreground/70">{t("detail.hint")}</p>
         )}
       </div>
-
-      {/* Provider Overview — Cards on mobile, Table on md+ */}
-      <Card className="shadow-sm">
-        <CardHeader className="px-4 pb-2 sm:px-6 sm:pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
-            <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
-            {t("overviewTitle")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="space-y-3 p-4 sm:p-6">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full sm:h-10" />
-              ))}
-            </div>
-          ) : !dashboard?.providers.length ? (
-            <div className="flex flex-col items-center py-10 sm:py-12 text-center">
-              <AlertCircle className="mb-2 h-8 w-8 sm:h-10 sm:w-10 text-muted-foreground/40" />
-              <p className="text-xs sm:text-sm text-muted-foreground">{t("overviewEmpty")}</p>
-            </div>
-          ) : (
-            <>
-
-              {/* Mobile: Card layout */}
-              <div className="space-y-2 p-3 sm:hidden">
-                {paginatedProviders.map((p) => (
-                  <div key={p.id} className="rounded-lg border p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium text-sm">{p.name}</p>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <DoorOpen className="h-3 w-3" /> {t("roomsCount", { count: p.rooms })}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Users className="h-3 w-3" /> {t("activeCount", { count: p.activeReservations })}
-                          </span>
-                        </div>
-                      </div>
-                      <Badge variant="secondary" className={`shrink-0 text-[10px] ${STATUS_BADGE_CLASS[p.status] || ""}`}>
-                        {getStatusLabel(p.status)}
-                      </Badge>
-                    </div>
-                    {/* Monthly Revenue row removed per request. */}
-                  </div>
-                ))}
-              </div>
-
-              {/* Desktop: Table layout */}
-              <div className="hidden sm:block overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t("colProviderName")}</TableHead>
-                      <TableHead>{t("colStatus")}</TableHead>
-                      <TableHead className="text-center">{t("colRooms")}</TableHead>
-                      <TableHead className="text-center">{t("colActiveReservations")}</TableHead>
-                      {/* Monthly Revenue column removed per request. */}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedProviders.map((p) => (
-                      <TableRow key={p.id}>
-                        <TableCell className="font-medium">{p.name}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className={STATUS_BADGE_CLASS[p.status] || ""}>
-                            {getStatusLabel(p.status)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">{p.rooms}</TableCell>
-                        <TableCell className="text-center">
-                          <span className={p.activeReservations > 0 ? "font-semibold text-emerald-600" : "text-muted-foreground"}>
-                            {p.activeReservations}
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Pagination Controls */}
-      {!loading && dashboard && dashboard.providers.length > 0 && (
-        <PaginationControls
-          currentPage={providerPagination.currentPage}
-          totalPages={providerPagination.totalPages}
-          pageSize={providerPagination.pageSize}
-          pageSizeOptions={providerPagination.pageSizeOptions}
-          totalItems={dashboard.providers.length}
-          rangeInfo={providerPagination.rangeInfo}
-          goToPage={providerPagination.goToPage}
-          setPageSize={providerPagination.setPageSize}
-        />
-      )}
 
       {/* ── Provider Room Breakdown — every guesthouse with its available /
           occupied / reserved / maintenance rooms and tappable room chips

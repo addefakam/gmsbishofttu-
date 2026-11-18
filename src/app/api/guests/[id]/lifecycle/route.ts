@@ -63,6 +63,11 @@ export async function GET(
     // (the guest query above already enforced that the guest belongs to
     // their provider — but a guest could in principle have reservations
     // at multiple providers; the operator only sees their own).
+    //
+    // We include `provider.name` so the client can render a full cross-
+    // provider movement trail — e.g. "Checked in at Kuriftu Resort" vs
+    // "Checked in at Lake Side Hotel" — which is the whole point of the
+    // police Guest Registry.
     const reservations = await db.reservation.findMany({
       where: isPolice ? { guestId: id } : { guestId: id, providerId },
       select: {
@@ -78,10 +83,22 @@ export async function GET(
         createdAt: true,
         updatedAt: true,
         roomId: true,
+        providerId: true,
         room: { select: { id: true, number: true, name: true } },
+        provider: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: "desc" },
     });
+
+    // Build a quick lookup: reservationId → { providerId, providerName }
+    // so staff-log-derived events (which only carry the reservationId)
+    // can also be tagged with the provider they happened at.
+    const reservationProviderMap = new Map<string, { providerId: string | null; providerName: string | null }>(
+      reservations.map((r) => [r.id, {
+        providerId: r.providerId,
+        providerName: r.provider?.name ?? null,
+      }])
+    );
 
     // ── 3. Pull all StaffLog entries for this guest's reservations ──
     // The StaffLog's `targetId` is the reservation ID, so we filter by
@@ -132,6 +149,8 @@ export async function GET(
       reservationId: string;
       roomNumber?: string;
       actorName?: string;
+      providerId?: string | null;
+      providerName?: string | null;
     };
 
     const events: Event[] = [];
@@ -142,6 +161,8 @@ export async function GET(
     // when StaffLog was missed.
     for (const r of reservations) {
       const roomNumber = r.room?.number;
+      const providerId = r.providerId;
+      const providerName = r.provider?.name ?? null;
 
       // Reservation created
       events.push({
@@ -152,6 +173,8 @@ export async function GET(
         source: "RESERVATION",
         reservationId: r.id,
         roomNumber,
+        providerId,
+        providerName,
       });
 
       // Checked in
@@ -165,6 +188,8 @@ export async function GET(
           source: "RESERVATION",
           reservationId: r.id,
           roomNumber,
+          providerId,
+          providerName,
         });
       }
 
@@ -190,6 +215,8 @@ export async function GET(
           source: "RESERVATION",
           reservationId: r.id,
           roomNumber,
+          providerId,
+          providerName,
         });
       }
 
@@ -203,6 +230,8 @@ export async function GET(
           source: "RESERVATION",
           reservationId: r.id,
           roomNumber,
+          providerId,
+          providerName,
         });
       }
     }
@@ -230,6 +259,9 @@ export async function GET(
       } catch {
         details = { rawDetails: log.details };
       }
+      // Tag the staff-log event with its provider via the reservation map.
+      // Falls back to nulls if the reservation was somehow deleted.
+      const prov = reservationProviderMap.get(log.targetId) ?? { providerId: null, providerName: null };
       events.push({
         type,
         timestamp: log.createdAt instanceof Date ? log.createdAt.toISOString() : String(log.createdAt),
@@ -239,6 +271,8 @@ export async function GET(
         reservationId: log.targetId,
         actorName: log.userName || undefined,
         roomNumber: typeof details.roomNumber === "string" ? details.roomNumber : undefined,
+        providerId: prov.providerId,
+        providerName: prov.providerName,
       });
     }
 
