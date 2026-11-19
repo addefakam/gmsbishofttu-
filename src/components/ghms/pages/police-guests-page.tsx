@@ -152,6 +152,74 @@ const EVENT_PRESENTATION: Record<
   RESERVATION_UPDATED: { icon: RefreshCw,    dot: "bg-slate-400",   chip: "bg-slate-50 text-slate-700",     iconColor: "text-slate-500" },
 };
 
+// ── Filter groups for the movement timeline ────────────────────────
+// Each group maps to one or more MovementEventType values. "ALL" is
+// the no-filter default; the others cluster related event types so the
+// chip row stays compact (7 chips instead of 9).
+type TimelineFilterGroup =
+  | "ALL"
+  | "CHECK_INS"
+  | "CHECK_OUTS"
+  | "ROOM_CHANGES"
+  | "CANCELLATIONS"
+  | "PAYMENTS"
+  | "RESERVATIONS";
+
+const EVENT_GROUP_MATCHERS: Record<TimelineFilterGroup, MovementEventType[] | null> = {
+  ALL:           null, // null = no filter
+  CHECK_INS:     ["CHECKED_IN"],
+  CHECK_OUTS:    ["CHECKED_OUT", "EARLY_CHECKOUT"],
+  ROOM_CHANGES:  ["ROOM_SHIFTED", "EXTENDED"],
+  CANCELLATIONS: ["CANCELLED"],
+  PAYMENTS:      ["PAYMENT"],
+  RESERVATIONS:  ["RESERVATION_CREATED", "RESERVATION_UPDATED"],
+};
+
+// Order of filter chips in the UI (ALL first, then logical flow).
+const FILTER_GROUP_ORDER: TimelineFilterGroup[] = [
+  "ALL", "CHECK_INS", "CHECK_OUTS", "ROOM_CHANGES", "CANCELLATIONS", "PAYMENTS", "RESERVATIONS",
+];
+
+// ── Active-stay detection ───────────────────────────────────────────
+// Returns the CHECKED_IN events for reservations that have NOT been
+// checked out (i.e. the guest is currently staying there). Sorted by
+// timestamp desc (most recent active stay first).
+//
+// Logic: walk events per reservationId in chronological order, track
+// whether the last event for that reservation was a CHECKED_IN. If so,
+// the stay is still active.
+function computeActiveStays(events: MovementEvent[]): MovementEvent[] {
+  const byReservation = new Map<string, MovementEvent[]>();
+  for (const e of events) {
+    const arr = byReservation.get(e.reservationId) ?? [];
+    arr.push(e);
+    byReservation.set(e.reservationId, arr);
+  }
+  const active: MovementEvent[] = [];
+  for (const evs of byReservation.values()) {
+    // chronological order (asc)
+    const sorted = [...evs].sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1));
+    let lastCheckIn: MovementEvent | null = null;
+    for (const e of sorted) {
+      if (e.type === "CHECKED_IN") lastCheckIn = e;
+      else if (e.type === "CHECKED_OUT" || e.type === "EARLY_CHECKOUT") lastCheckIn = null;
+    }
+    if (lastCheckIn) active.push(lastCheckIn);
+  }
+  return active.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+}
+
+// Look up the scheduled checkout date for a given reservationId by
+// finding its RESERVATION_CREATED event (which carries checkOut in
+// details). Returns null if not found.
+function findScheduledCheckout(events: MovementEvent[], reservationId: string): string | null {
+  const created = events.find(
+    (e) => e.type === "RESERVATION_CREATED" && e.reservationId === reservationId
+  );
+  const co = created?.details?.checkOut;
+  return typeof co === "string" ? co : null;
+}
+
 export default function PoliceGuestsPage() {
   const { t } = useTranslation("policeGuests");
   const { refreshKey } = useAppStore();
@@ -177,6 +245,11 @@ export default function PoliceGuestsPage() {
   const [movementEvents, setMovementEvents] = useState<MovementEvent[]>([]);
   const [movementLoading, setMovementLoading] = useState(false);
   const [movementError, setMovementError] = useState<string | null>(null);
+  // Filter state for the movement timeline. "ALL" = no filter. Reset
+  // whenever the dialog closes so opening guest B doesn't carry over
+  // guest A's filter selection.
+  const [timelineFilterType, setTimelineFilterType] = useState<TimelineFilterGroup>("ALL");
+  const [timelineFilterProvider, setTimelineFilterProvider] = useState<string>("ALL");
 
   // Debounce search input (300ms) to avoid firing a request on every keystroke
   useEffect(() => {
@@ -289,6 +362,34 @@ export default function PoliceGuestsPage() {
       .map((e) => e.providerName)
       .filter((n): n is string => Boolean(n))
   ).size;
+
+  // ── Journey summary derived values ────────────────────────────────
+  // These power the new "Journey Summary" strip + "Current Whereabouts"
+  // callout above the 2-column body. All are derived purely from the
+  // movement events array, so they recompute whenever events load.
+  const sortedTimestamps = movementEvents.map((e) => e.timestamp).sort();
+  const firstSeenDate = sortedTimestamps[0] ?? null;
+  const lastActivityDate = sortedTimestamps[sortedTimestamps.length - 1] ?? null;
+  const activeStays = computeActiveStays(movementEvents);
+  const currentStatusKey =
+    activeStays.length > 0 ? "currentlyStaying" : "noActiveStay";
+
+  // Distinct provider list for the provider filter dropdown. Sorted
+  // alphabetically. Empty when there are no events (still loading or
+  // no movement history).
+  const distinctProviderList = Array.from(
+    new Set(movementEvents.map((e) => e.providerName).filter((n): n is string => Boolean(n)))
+  ).sort();
+
+  // Apply both filters (event type group + provider) to the events
+  // array. The timeline renders `filteredEvents` instead of the raw
+  // `movementEvents`. When both filters are "ALL", this is identity.
+  const filteredEvents = movementEvents.filter((ev) => {
+    const groupMatcher = EVENT_GROUP_MATCHERS[timelineFilterType];
+    if (groupMatcher && !groupMatcher.includes(ev.type)) return false;
+    if (timelineFilterProvider !== "ALL" && ev.providerName !== timelineFilterProvider) return false;
+    return true;
+  });
 
   return (
     <div className="space-y-4 p-3 sm:p-4 md:p-6">
@@ -464,6 +565,8 @@ export default function PoliceGuestsPage() {
             setMovementEvents([]);
             setMovementError(null);
             setMovementLoading(false);
+            setTimelineFilterType("ALL");
+            setTimelineFilterProvider("ALL");
           }
         }}
       >
@@ -485,6 +588,93 @@ export default function PoliceGuestsPage() {
               {distinctProviders > 1 && ` · ${t('providersVisited', { count: distinctProviders })}`}
             </DialogDescription>
           </DialogHeader>
+
+          {/* ── Journey Summary strip ────────────────────────────────────
+              A horizontal row of mini stat cards giving police officers
+              an at-a-glance overview of the guest's tracking history:
+              when they first appeared in the system, when they were
+              last active, how many movements total, how many distinct
+              properties they've visited, and their current status
+              (actively staying somewhere vs. not). */}
+          {selectedGuest && !movementLoading && movementEvents.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 rounded-lg border bg-muted/20 p-2.5">
+              <SummaryCell
+                label={t('firstSeen')}
+                value={firstSeenDate ? formatDate(firstSeenDate) : "—"}
+                icon={Calendar}
+              />
+              <SummaryCell
+                label={t('lastActivity')}
+                value={lastActivityDate ? formatDate(lastActivityDate) : "—"}
+                icon={Clock}
+              />
+              <SummaryCell
+                label={t('movementTimelineShort', t('movementTimeline'))}
+                value={String(movementEvents.length)}
+                icon={RouteIcon}
+              />
+              <SummaryCell
+                label={t('providersVisitedShort', t('providersVisited', { count: distinctProviders }))}
+                value={String(distinctProviders)}
+                icon={Building2}
+              />
+              <SummaryCell
+                label={t('status')}
+                value={t(currentStatusKey)}
+                icon={activeStays.length > 0 ? LogIn : LogOut}
+                valueClassName={activeStays.length > 0 ? "text-emerald-700" : "text-muted-foreground"}
+              />
+            </div>
+          )}
+
+          {/* ── Current Whereabouts callout ─────────────────────────────
+              When the guest has one or more active check-ins (no matching
+              checkout), show a prominent emerald panel with the property
+              they're currently at, the room, when they checked in, and
+              the scheduled checkout date. This is the headline "where is
+              this guest right now" answer for the follow-up view. */}
+          {selectedGuest && !movementLoading && activeStays.length > 0 && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                </span>
+                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-800">
+                  {t('currentWhereabouts')}
+                </p>
+              </div>
+              {activeStays.map((stay) => {
+                const scheduledOut = findScheduledCheckout(movementEvents, stay.reservationId);
+                return (
+                  <div key={stay.reservationId} className="text-xs text-emerald-900">
+                    <p className="font-semibold">
+                      {t('currentlyStayingAt')} {stay.providerName || t('unknownProvider')}
+                    </p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-emerald-800/90">
+                      {stay.roomNumber && (
+                        <span className="inline-flex items-center gap-0.5">
+                          <BedDouble className="h-3 w-3" />
+                          Room {stay.roomNumber}
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-0.5">
+                        <LogIn className="h-3 w-3" />
+                        {t('checkedIn')} {formatDateTime(stay.timestamp)}
+                      </span>
+                      {scheduledOut && (
+                        <span className="inline-flex items-center gap-0.5">
+                          <LogOut className="h-3 w-3" />
+                          {t('scheduledCheckout')} {formatDate(scheduledOut)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {selectedGuest && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* ── LEFT: Guest profile + identity + contact ── */}
@@ -597,10 +787,55 @@ export default function PoliceGuestsPage() {
                   </div>
                   {!movementLoading && movementEvents.length > 0 && (
                     <span className="text-[10px] text-muted-foreground">
-                      {t('movementCount', { count: movementEvents.length })}
+                      {t('movementsShown', { shown: filteredEvents.length, total: movementEvents.length })}
                     </span>
                   )}
                 </div>
+
+                {/* Filter chips — event type group + provider dropdown.
+                    Chips compose with the dropdown; both reset to "ALL"
+                    when the dialog closes. Hidden while loading or when
+                    there are no events to filter. */}
+                {!movementLoading && movementEvents.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {FILTER_GROUP_ORDER.map((group) => (
+                      <button
+                        key={group}
+                        type="button"
+                        onClick={() => setTimelineFilterType(group)}
+                        aria-pressed={timelineFilterType === group}
+                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none transition-colors ${
+                          timelineFilterType === group
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        {t(`filter_${group}`)}
+                      </button>
+                    ))}
+                    {distinctProviderList.length > 1 && (
+                      <Select
+                        value={timelineFilterProvider}
+                        onValueChange={setTimelineFilterProvider}
+                      >
+                        <SelectTrigger className="h-7 w-auto min-w-[140px] max-w-[220px] text-[11px] ml-1">
+                          <SelectValue placeholder={t('filterAllProviders')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ALL">{t('filterAllProviders')}</SelectItem>
+                          {distinctProviderList.map((name) => (
+                            <SelectItem key={name} value={name}>
+                              <span className="flex items-center gap-1">
+                                <Building2 className="h-3 w-3 opacity-60" />
+                                {name}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                )}
 
                 {movementLoading ? (
                   <div className="space-y-2">
@@ -617,6 +852,11 @@ export default function PoliceGuestsPage() {
                     <RouteIcon className="mb-2 h-8 w-8 opacity-40" />
                     <p className="text-xs">{t('noMovements')}</p>
                   </div>
+                ) : filteredEvents.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground">
+                    <RouteIcon className="mb-2 h-8 w-8 opacity-40" />
+                    <p className="text-xs">{t('noMatchingMovements')}</p>
+                  </div>
                 ) : (
                   <ol className="relative space-y-3 max-h-[60vh] overflow-y-auto pr-1">
                     {/* Vertical guide line */}
@@ -624,7 +864,7 @@ export default function PoliceGuestsPage() {
                       aria-hidden
                       className="absolute left-[15px] top-2 bottom-2 w-px bg-border"
                     />
-                    {movementEvents.map((ev, i) => {
+                    {filteredEvents.map((ev, i) => {
                       const p = EVENT_PRESENTATION[ev.type] ?? EVENT_PRESENTATION.RESERVATION_UPDATED;
                       const Icon = p.icon;
                       return (
@@ -712,6 +952,33 @@ export default function PoliceGuestsPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── SummaryCell — compact stat for the Journey Summary strip ────────
+// Icon + label + value stacked vertically. The value can be colour-tinted
+// via `valueClassName` (e.g. emerald for active status).
+function SummaryCell({
+  label,
+  value,
+  icon: Icon,
+  valueClassName = "",
+}: {
+  label: string;
+  value: string;
+  icon: typeof Calendar;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="rounded-md bg-card border border-border/60 p-2 text-center">
+      <Icon className="mx-auto mb-1 h-3 w-3 text-muted-foreground" />
+      <p className={`text-xs sm:text-sm font-bold leading-tight truncate ${valueClassName}`} title={value}>
+        {value}
+      </p>
+      <p className="text-[9px] uppercase tracking-wider text-muted-foreground mt-0.5 truncate">
+        {label}
+      </p>
     </div>
   );
 }
