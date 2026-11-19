@@ -132,6 +132,11 @@ export default function PoliceDashboardPage() {
   // guesthouse list by name / address / phone (case-insensitive).
   // Empty string = no filter (show all providers).
   const [breakdownSearch, setBreakdownSearch] = useState("");
+  // Sort key for the Provider Room Breakdown card. "DEFAULT" = preserve
+  // API order; otherwise sort providers descending by their count of
+  // rooms in the selected status (most available / occupied / reserved /
+  // maintenance rooms first).
+  const [breakdownSort, setBreakdownSort] = useState<RoomStatus | "DEFAULT">("DEFAULT");
 
   const [loading, setLoading] = useState(true);
   const [anomalyEnabled, setAnomalyEnabled] = useState(false);
@@ -395,6 +400,29 @@ export default function PoliceDashboardPage() {
                 />
               </div>
             </div>
+            {/* Sort chips — reorder providers by their count of rooms in a
+                given status (desc). "Default" restores the API's original
+                order. Each status chip carries its color dot for parity
+                with the per-provider status counts below. */}
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mr-1 hidden sm:block">
+                {t("breakdown.sortLabel")}
+              </span>
+              <SortChip
+                active={breakdownSort === "DEFAULT"}
+                onClick={() => setBreakdownSort("DEFAULT")}
+                label={t("breakdown.sortDefault")}
+              />
+              {ROOM_STATUSES.map((status) => (
+                <SortChip
+                  key={status}
+                  active={breakdownSort === status}
+                  onClick={() => setBreakdownSort(status)}
+                  label={t(BREAKDOWN_STATUS_LABEL[status])}
+                  dotClass={ROOM_STATUS_STYLES[status].dot}
+                />
+              ))}
+            </div>
           </CardHeader>
           <CardContent className="px-4 pb-4 sm:px-6">
             <ul className="space-y-3">
@@ -403,13 +431,22 @@ export default function PoliceDashboardPage() {
                 // address, or phone (case-insensitive). Empty query =
                 // show all providers.
                 const q = breakdownSearch.trim().toLowerCase();
-                const filteredProviders = q
+                let filteredProviders = q
                   ? breakdown.providers.filter((p) =>
                       (p.name || "").toLowerCase().includes(q) ||
                       (p.address || "").toLowerCase().includes(q) ||
                       (p.phone || "").toLowerCase().includes(q)
                     )
                   : breakdown.providers;
+                // Apply sort if a status chip is active. Descending by
+                // the count of rooms in that status — providers with the
+                // most rooms of the selected kind float to the top.
+                if (breakdownSort !== "DEFAULT") {
+                  const key = PROVIDER_COUNT_KEY[breakdownSort];
+                  filteredProviders = [...filteredProviders].sort(
+                    (a, b) => (b[key] || 0) - (a[key] || 0)
+                  );
+                }
                 if (filteredProviders.length === 0) {
                   return (
                     <li className="rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-8 text-center">
@@ -564,5 +601,42 @@ export default function PoliceDashboardPage() {
         onProviderUpdated={fetchData}
       />
     </div>
+  );
+}
+
+// ── SortChip — pill button used in the Provider Room Breakdown header ──
+// Active state gets a tinted background + border; inactive is muted.
+// When `dotClass` is provided, a colored dot is rendered before the label
+// to mirror the per-provider status counts below.
+function SortChip({
+  active,
+  onClick,
+  label,
+  dotClass,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  dotClass?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none transition-colors ${
+        active
+          ? "border-slate-900 bg-slate-900 text-white"
+          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+      }`}
+    >
+      {dotClass && (
+        <span
+          aria-hidden="true"
+          className={`inline-block h-2 w-2 rounded-full ${dotClass}`}
+        />
+      )}
+      {label}
+    </button>
   );
 }

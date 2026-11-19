@@ -391,7 +391,9 @@
       "noRooms": "Dhiyeessitaa kanaaf kutaawwan galmeefaman hin jiru.",
       "searchLabel": "Barbaadi",
       "searchPlaceholder": "Maqaa dhiyeessitaa, teessoo ykn bilbilaatiin barbaadi…",
-      "noMatch": "Barbaadda kee walfakkaatu dhiyeessitoota hin jiru."
+      "noMatch": "Barbaadda kee walfakkaatu dhiyeessitoota hin jiru.",
+      "sortLabel": "Qabiyyee",
+      "sortDefault": "Durtii"
     },
     "pageTitle": "Daashboordii Poolisii",
     "pageSubtitle": "Mana keessummaa galmaa'an hunda ilaalcha",

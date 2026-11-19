@@ -391,7 +391,9 @@
       "noRooms": "ለዚህ አቅራቢ የተመዘገቡ ክፍሎች የሉም።",
       "searchLabel": "ፍለጋ",
       "searchPlaceholder": "በአቅራቢ ስም፣ አድራሻ ወይም ስልክ ይፈልጉ…",
-      "noMatch": "በፍለጋዎ ምንም አቅራቢዎች አልተገኙም።"
+      "noMatch": "በፍለጋዎ ምንም አቅራቢዎች አልተገኙም።",
+      "sortLabel": "በዚህ ደርድር",
+      "sortDefault": "መደበኛ"
     },
     "pageTitle": "የፖሊስ ዳሽቦርድ",
     "pageSubtitle": "የተመዘገቡ የእንግዳ ማረፊያዎች አጠቃላይ እይታ",

@@ -391,7 +391,9 @@
       "noRooms": "No rooms registered for this guesthouse.",
       "searchLabel": "Search",
       "searchPlaceholder": "Search by guesthouse name, address, or phone…",
-      "noMatch": "No guesthouses match your search."
+      "noMatch": "No guesthouses match your search.",
+      "sortLabel": "Sort by",
+      "sortDefault": "Default"
     },
     "pageTitle": "Police Dashboard",
     "pageSubtitle": "Overview of all registered guesthouses",
